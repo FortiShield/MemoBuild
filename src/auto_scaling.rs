@@ -3,11 +3,12 @@
 //! This module provides Horizontal Pod Autoscaler (HPA) integration,
 //! queue-based scaling triggers, and resource prediction algorithms.
 
+use std::collections::VecDeque;
+use std::sync::Arc;
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Metrics collected for scaling decisions

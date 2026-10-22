@@ -2,10 +2,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{http::StatusCode, routing::post, Extension, Json, Router};
+use axum::http::StatusCode;
+use axum::routing::post;
+use axum::{Extension, Json, Router};
 use reqwest::Client;
 
-use crate::remote_exec::{worker::WorkerNode, ActionRequest, ActionResult};
+use crate::remote_exec::worker::WorkerNode;
+use crate::remote_exec::{ActionRequest, ActionResult};
 
 #[derive(serde::Serialize)]
 struct WorkerRegistration {

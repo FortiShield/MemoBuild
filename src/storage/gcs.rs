@@ -1,5 +1,6 @@
-use super::ArtifactStorage;
 use anyhow::Result;
+
+use super::ArtifactStorage;
 
 /// Google Cloud Storage backed artifact storage.
 ///

@@ -3,13 +3,15 @@
 //! This module implements multi-master cache replication with consistent hashing
 //! for horizontal scaling and fault tolerance.
 
-use crate::remote_cache::RemoteCache;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::remote_cache::RemoteCache;
 
 /// Configuration for a cache cluster node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,7 +216,11 @@ pub struct DistributedCache {
 }
 
 impl DistributedCache {
-    pub fn new(cluster: Arc<CacheCluster>, local_cache: Arc<dyn RemoteCache>, metrics: crate::metrics::SharedMetrics) -> Self {
+    pub fn new(
+        cluster: Arc<CacheCluster>,
+        local_cache: Arc<dyn RemoteCache>,
+        metrics: crate::metrics::SharedMetrics,
+    ) -> Self {
         Self {
             cluster,
             local_cache,
@@ -243,7 +249,10 @@ impl RemoteCache for DistributedCache {
 
         // Check local first
         if self.local_cache.has(hash).await? {
-            self.metrics.read().await.inc_cache_hits("local", &self.cluster.local_node_id());
+            self.metrics
+                .read()
+                .await
+                .inc_cache_hits("local", &self.cluster.local_node_id());
             return Ok(true);
         }
 
@@ -251,7 +260,10 @@ impl RemoteCache for DistributedCache {
         if let Some(primary_node) = self.cluster.get_primary_node(hash).await? {
             if let Some(client) = self.get_remote_client(&primary_node).await {
                 if client.has(hash).await? {
-                    self.metrics.read().await.inc_cache_hits("remote", &primary_node);
+                    self.metrics
+                        .read()
+                        .await
+                        .inc_cache_hits("remote", &primary_node);
                     return Ok(true);
                 }
             }
@@ -262,20 +274,29 @@ impl RemoteCache for DistributedCache {
         for replica_node in replicas {
             if let Some(client) = self.get_remote_client(&replica_node).await {
                 if client.has(hash).await? {
-                    self.metrics.read().await.inc_cache_hits("remote", &replica_node);
+                    self.metrics
+                        .read()
+                        .await
+                        .inc_cache_hits("remote", &replica_node);
                     return Ok(true);
                 }
             }
         }
 
-        self.metrics.read().await.inc_cache_misses("distributed", &self.cluster.local_node_id());
+        self.metrics
+            .read()
+            .await
+            .inc_cache_misses("distributed", &self.cluster.local_node_id());
         Ok(false)
     }
 
     async fn get(&self, hash: &str) -> Result<Option<Vec<u8>>> {
         // Try local first
         if let Some(data) = self.local_cache.get(hash).await? {
-            self.metrics.read().await.inc_cache_hits("local", &self.cluster.local_node_id());
+            self.metrics
+                .read()
+                .await
+                .inc_cache_hits("local", &self.cluster.local_node_id());
             return Ok(Some(data));
         }
 
@@ -285,7 +306,10 @@ impl RemoteCache for DistributedCache {
                 if let Some(data) = client.get(hash).await? {
                     // Cache locally for future requests
                     self.local_cache.put(hash, &data).await?;
-                    self.metrics.read().await.inc_cache_hits("remote", &primary_node);
+                    self.metrics
+                        .read()
+                        .await
+                        .inc_cache_hits("remote", &primary_node);
                     return Ok(Some(data));
                 }
             }
@@ -303,19 +327,28 @@ impl RemoteCache for DistributedCache {
                             let _ = primary_client.put(hash, &data).await; // Best effort
                         }
                     }
-                    self.metrics.read().await.inc_cache_hits("remote", &replica_node);
+                    self.metrics
+                        .read()
+                        .await
+                        .inc_cache_hits("remote", &replica_node);
                     return Ok(Some(data));
                 }
             }
         }
 
-        self.metrics.read().await.inc_cache_misses("distributed", &self.cluster.local_node_id());
+        self.metrics
+            .read()
+            .await
+            .inc_cache_misses("distributed", &self.cluster.local_node_id());
         Ok(None)
     }
 
     async fn put(&self, hash: &str, data: &[u8]) -> Result<()> {
         // Observe artifact size
-        self.metrics.read().await.observe_artifact_size(data.len() as f64);
+        self.metrics
+            .read()
+            .await
+            .observe_artifact_size(data.len() as f64);
 
         // Store locally first
         self.local_cache.put(hash, data).await?;
@@ -416,7 +449,8 @@ impl RemoteCache for DistributedCache {
                     self.local_cache.put_layer(hash, &data).await?;
                     if let Some(primary_node) = self.cluster.get_primary_node(hash).await? {
                         if let Some(primary_client) = self.get_remote_client(&primary_node).await {
-                            let _ = primary_client.put_layer(hash, &data).await; // Best effort
+                            let _ = primary_client.put_layer(hash, &data).await;
+                            // Best effort
                         }
                     }
                     return Ok(Some(data));

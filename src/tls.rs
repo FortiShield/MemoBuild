@@ -3,11 +3,12 @@
 //! This module provides mTLS configuration for MemoBuild cluster nodes,
 //! including certificate generation and loading.
 
+use std::fs;
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType};
 use rustls::ServerConfig;
-use std::fs;
-use std::sync::Arc;
 
 /// TLS configuration for cluster communication
 pub struct TlsConfig {

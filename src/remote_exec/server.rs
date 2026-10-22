@@ -2,13 +2,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{
-    http::StatusCode,
-    routing::{get, post},
-    Extension, Json, Router,
-};
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::{Extension, Json, Router};
 
-use crate::remote_exec::{scheduler::Scheduler, ActionRequest, ActionResult};
+use crate::remote_exec::scheduler::Scheduler;
+use crate::remote_exec::{ActionRequest, ActionResult};
 
 #[derive(serde::Deserialize)]
 struct WorkerRegistration {

@@ -1,15 +1,17 @@
-use crate::cache::remote::RemoteCache;
-use crate::dashboard::BuildEvent;
-use crate::graph::BuildGraph;
-use crate::error::{RetryConfig, calculate_backoff};
+use std::io::{Read, Write};
+use std::time::Duration;
+
 use anyhow::Result;
 use async_trait::async_trait;
-use reqwest::Client;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::io::{Read, Write};
-use std::time::Duration;
+use reqwest::Client;
+
+use crate::cache::remote::RemoteCache;
+use crate::dashboard::BuildEvent;
+use crate::error::{calculate_backoff, RetryConfig};
+use crate::graph::BuildGraph;
 
 #[derive(Clone)]
 pub struct HttpRemoteCache {
@@ -29,12 +31,13 @@ impl HttpRemoteCache {
             reqwest::header::HeaderValue::from_static("1.0"),
         );
 
-        let mut builder = Client::builder()
-            .default_headers(headers);
+        let mut builder = Client::builder().default_headers(headers);
 
         if let Some(tls) = tls_config {
             if let Ok(client_config) = tls.client_config() {
-                builder = builder.use_rustls_tls().use_preconfigured_tls(client_config);
+                builder = builder
+                    .use_rustls_tls()
+                    .use_preconfigured_tls(client_config);
             }
         }
 
@@ -45,10 +48,7 @@ impl HttpRemoteCache {
 }
 
 /// Helper for retrying operations with exponential backoff
-async fn retry_with_backoff<F, Fut, T>(
-    mut operation: F,
-    config: &RetryConfig,
-) -> Result<T>
+async fn retry_with_backoff<F, Fut, T>(mut operation: F, config: &RetryConfig) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T>>,
@@ -272,10 +272,7 @@ pub mod tests {
     use super::*;
 
     /// Helper to test retry_with_backoff logic
-    pub async fn test_retry_with_backoff<F, Fut, T>(
-        operation: F,
-        config: &RetryConfig,
-    ) -> Result<T>
+    pub async fn test_retry_with_backoff<F, Fut, T>(operation: F, config: &RetryConfig) -> Result<T>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T>>,

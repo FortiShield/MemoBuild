@@ -6,11 +6,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod client;
-pub mod scheduler;
 #[cfg(feature = "remote-exec")]
 pub mod grpc_server;
 #[cfg(feature = "remote-exec")]
 pub mod reapi;
+pub mod scheduler;
 #[cfg(any(feature = "server", feature = "remote-exec"))]
 pub mod server;
 pub mod worker;

@@ -1,7 +1,9 @@
-use super::ArtifactStorage;
-use anyhow::Result;
 use std::sync::Arc;
+
+use anyhow::Result;
 use tokio::sync::OnceCell;
+
+use super::ArtifactStorage;
 
 /// S3-backed artifact storage.
 ///
@@ -110,13 +112,7 @@ impl ArtifactStorage for S3Storage {
         let rt = tokio::runtime::Handle::current();
         let client = rt.block_on(self.get_client());
 
-        let resp = match rt.block_on(
-            client
-                .get_object()
-                .bucket(&bucket)
-                .key(&key)
-                .send(),
-        ) {
+        let resp = match rt.block_on(client.get_object().bucket(&bucket).key(&key).send()) {
             Ok(r) => r,
             Err(e) => {
                 let msg = format!("{}", e);
@@ -143,13 +139,7 @@ impl ArtifactStorage for S3Storage {
         let rt = tokio::runtime::Handle::current();
         let client = rt.block_on(self.get_client());
 
-        match rt.block_on(
-            client
-                .head_object()
-                .bucket(&bucket)
-                .key(&key)
-                .send(),
-        ) {
+        match rt.block_on(client.head_object().bucket(&bucket).key(&key).send()) {
             Ok(_) => Ok(true),
             Err(e) => {
                 let msg = format!("{}", e);
@@ -168,14 +158,8 @@ impl ArtifactStorage for S3Storage {
         let rt = tokio::runtime::Handle::current();
         let client = rt.block_on(self.get_client());
 
-        rt.block_on(
-            client
-                .delete_object()
-                .bucket(&bucket)
-                .key(&key)
-                .send(),
-        )
-        .map_err(|e| anyhow::anyhow!("S3 delete failed: {}", e))?;
+        rt.block_on(client.delete_object().bucket(&bucket).key(&key).send())
+            .map_err(|e| anyhow::anyhow!("S3 delete failed: {}", e))?;
 
         Ok(())
     }

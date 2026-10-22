@@ -86,7 +86,7 @@ helm install memobuild-cluster ./charts/memobuild-cluster \
 Visit the [examples/](./examples) directory to see ready-to-use projects:
 - **[Node.js App](./examples/nodejs-app)**: Simple web server with dependency caching.
 - **[Rust App](./examples/rust-app)**: High-performance async app showing complex build caching.
-- **[Cluster Demo](./demo_cluster.sh)**: Multi-node distributed cache setup.
+- **[Cluster Demo](./scripts/demo_cluster.sh)**: Multi-node distributed cache setup.
 
 ---
 

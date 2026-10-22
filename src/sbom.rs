@@ -3,12 +3,13 @@
 //! This module generates CycloneDX SBOMs for built OCI images.
 //! It lists all resolved dependencies, COPY-sourced files, and layer metadata.
 
+use std::fs;
+use std::path::Path;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SbomGenerator {
@@ -51,10 +52,7 @@ impl SbomGenerator {
             component: Component {
                 r#type: "application".to_string(),
                 name: image_name.to_string(),
-                version: image_digest
-                    .get(..12)
-                    .unwrap_or(image_digest)
-                    .to_string(),
+                version: image_digest.get(..12).unwrap_or(image_digest).to_string(),
                 purl: Some(format!("oci://{}@{}", image_name, image_digest)),
                 hash: image_digest.to_string(),
                 licenses: vec![],
@@ -84,7 +82,13 @@ impl SbomGenerator {
         let file_components = self.collect_dockerfile_components(context_dir, &dockerfile)?;
         let dependencies = self.collect_dependencies(context_dir)?;
         let layers = self.collect_layers(context_dir)?;
-        self.generate_sbom(image_name, image_digest, &layers, &dependencies, &file_components)
+        self.generate_sbom(
+            image_name,
+            image_digest,
+            &layers,
+            &dependencies,
+            &file_components,
+        )
     }
 
     fn collect_dockerfile_components(
@@ -155,7 +159,10 @@ impl SbomGenerator {
                     }
                     if let Some(name) = &current_name {
                         if let Some(version) = &current_version {
-                            let sha256 = format!("sha256:{}", self.compute_hash(format!("{}@{}", name, version).as_bytes())?);
+                            let sha256 = format!(
+                                "sha256:{}",
+                                self.compute_hash(format!("{}@{}", name, version).as_bytes())?
+                            );
                             deps.push(Dependency {
                                 name: name.clone(),
                                 version: version.clone(),
@@ -181,11 +188,19 @@ impl SbomGenerator {
         Ok(deps)
     }
 
-    fn collect_npm_deps(&self, node: &Value, parent: &str, deps: &mut Vec<Dependency>) -> Result<()> {
+    fn collect_npm_deps(
+        &self,
+        node: &Value,
+        parent: &str,
+        deps: &mut Vec<Dependency>,
+    ) -> Result<()> {
         if let Value::Object(map) = node {
             for (name, details) in map {
                 if let Some(version) = details.get("version").and_then(|v| v.as_str()) {
-                    let sha256 = format!("sha256:{}", self.compute_hash(format!("{}@{}", name, version).as_bytes())?);
+                    let sha256 = format!(
+                        "sha256:{}",
+                        self.compute_hash(format!("{}@{}", name, version).as_bytes())?
+                    );
                     deps.push(Dependency {
                         name: if parent.is_empty() {
                             name.clone()
@@ -253,7 +268,10 @@ impl SbomGenerator {
         xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.push_str(&format!("<bom serialNumber=\"{}\" version=\"1\" xmlns=\"http://cyclonedx.org/schema/bom/1.5\">\n", sbom.serial_number));
         xml.push_str("  <metadata>\n");
-        xml.push_str(&format!("    <timestamp>{}</timestamp>\n", sbom.metadata.timestamp));
+        xml.push_str(&format!(
+            "    <timestamp>{}</timestamp>\n",
+            sbom.metadata.timestamp
+        ));
         xml.push_str("    <tools>\n");
         for tool in &sbom.metadata.tools {
             xml.push_str("      <tool>\n");
@@ -342,8 +360,9 @@ pub enum OutputFormat {
 
 /// CLI for SBOM generation
 pub mod cli {
-    use super::*;
     use std::path::Path;
+
+    use super::*;
 
     pub fn generate_cmd(
         image: &str,

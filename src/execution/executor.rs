@@ -1,10 +1,12 @@
-use crate::cache::hybrid::HybridCache;
-use crate::graph::BuildGraph;
+use std::sync::Arc;
+use std::time::Instant;
+
 use anyhow::Result;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::Arc;
-use std::time::Instant;
+
+use crate::cache::hybrid::HybridCache;
+use crate::graph::BuildGraph;
 
 /// Incremental executor that supports parallel execution and selective rebuilds
 pub struct IncrementalExecutor {
@@ -359,7 +361,8 @@ impl IncrementalExecutor {
                 if let Some(ref _manifest_hash) = node.metadata.input_manifest_hash {
                     // If it's a COPY node, we can re-generate and upload
                     if let Some(ref path) = node.source_path {
-                        if let Ok(manifest) = crate::cache::utils::ArtifactManifest::from_dir(path) {
+                        if let Ok(manifest) = crate::cache::utils::ArtifactManifest::from_dir(path)
+                        {
                             println!("📤 Uploading input manifest for {}...", name);
                             cache.upload_manifest_and_files(&manifest, path).await?;
                         }

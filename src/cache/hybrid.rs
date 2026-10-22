@@ -1,7 +1,9 @@
-use crate::cache::remote::RemoteCache;
-use crate::cache::local::LocalCache;
-use anyhow::Result;
 use std::sync::Arc;
+
+use anyhow::Result;
+
+use crate::cache::local::LocalCache;
+use crate::cache::remote::RemoteCache;
 
 pub struct HybridCache {
     pub local: LocalCache,

@@ -93,7 +93,7 @@ memobuild build . --remote-exec
 #### Distributed Demo Script (`demo_distributed.sh`)
 ```bash
 # Automated testing of distributed execution
-./demo_distributed.sh
+./scripts/demo_distributed.sh
 
 # Starts: 1 scheduler + 2 workers
 # Runs: Distributed build of nodejs-app example
