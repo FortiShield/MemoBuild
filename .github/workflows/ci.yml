@@ -70,6 +70,20 @@ jobs:
       - name: Run Audit
         run: cargo audit
 
+  bootstrap:
+    name: Bootstrap Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Lint Shell Scripts
+        run: ./scripts/lint_shellcheck --ci
+      - name: Test Bootstrap Scripts
+        run: ./scripts/tests/bootstrap_test.sh
+
   build:
     name: Build Multi-Platform
     needs: [format, clippy, test, security]

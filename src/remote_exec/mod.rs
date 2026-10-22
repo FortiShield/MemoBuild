@@ -1,15 +1,16 @@
-use anyhow::Result;
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
+use anyhow::Result;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
 pub mod client;
-pub mod scheduler;
 #[cfg(feature = "remote-exec")]
 pub mod grpc_server;
 #[cfg(feature = "remote-exec")]
 pub mod reapi;
+pub mod scheduler;
 #[cfg(any(feature = "server", feature = "remote-exec"))]
 pub mod server;
 pub mod worker;

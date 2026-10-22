@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
+use tokio::sync::broadcast;
+
 use crate::dashboard::metrics::{BuildEvent, BuildObserver};
 use crate::remote_cache::RemoteCache;
-use std::sync::Arc;
-use tokio::sync::broadcast;
 
 pub struct BroadcastObserver {
     tx: broadcast::Sender<BuildEvent>,

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#
+# Installs the memobuild_channel_config binary at a pinned revision.
+#
+# This script acts as a lockfile: the REVISION variable pins the exact version
+# of the config binary to the code that reads its output. Update REVISION when
+# the config binary changes.
+#
+# Usage:
+#   ./scripts/install_channel_config          # install if not already at pinned rev
+#   ./scripts/install_channel_config --force  # force reinstall
+#
+# The channel configuration is only published to contributors that have access
+# to the internal configuration repository, so REVISION is empty in the public
+# repository. Without a pinned revision there is nothing to install and the
+# script exits successfully: the callers treat it as an optional component and
+# must not fail when it is unavailable.
+
+set -euo pipefail
+
+# Pinned revision of the channel config binary. Empty in the public
+# repository, see the note above.
+REVISION="${MEMOBUILD_CHANNEL_CONFIG_REVISION:-}"
+
+FORCE=0
+for arg in "$@"; do
+    case "${arg}" in
+        --force)
+            FORCE=1
+            ;;
+        -h | --help)
+            printf 'Usage: %s [--force]\n' "$0"
+            exit 0
+            ;;
+        *)
+            printf 'error: unknown argument %s\n' "${arg}" >&2
+            exit 64
+            ;;
+    esac
+done
+
+if [[ -z "${REVISION}" ]]; then
+    printf 'Skipping the internal channel config installation (no pinned revision configured).\n'
+    exit 0
+fi
+
+if ((FORCE == 0)) && command -v memobuild_channel_config >/dev/null 2>&1; then
+    printf 'memobuild_channel_config is already installed, skipping.\n'
+    exit 0
+fi
+
+printf 'error: no download location is configured for channel config revision %s.\n' "${REVISION}" >&2
+exit 1

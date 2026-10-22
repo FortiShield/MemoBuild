@@ -1,7 +1,8 @@
-use crate::graph::{BuildGraph, NodeKind};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::graph::{BuildGraph, NodeKind};
 
 pub struct AstAnalyzer;
 

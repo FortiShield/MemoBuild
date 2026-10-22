@@ -57,7 +57,9 @@ pub fn storage_from_env(base_dir: &std::path::Path) -> Result<Box<dyn ArtifactSt
             let prefix = std::env::var("MEMOBUILD_STORAGE_PREFIX").unwrap_or_default();
             // S3Storage::new is async, but we construct a blocking wrapper here.
             // The server calls this at startup inside a tokio runtime.
-            Ok(Box::new(S3Storage::new_sync(bucket, endpoint, region, prefix)))
+            Ok(Box::new(S3Storage::new_sync(
+                bucket, endpoint, region, prefix,
+            )))
         }
         StorageBackend::Gcs => {
             let bucket = std::env::var("MEMOBUILD_STORAGE_BUCKET")

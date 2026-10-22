@@ -9,10 +9,11 @@
 //!   `MEMOBUILD_GC_MAX_AGE_DAYS` — max age before eviction (default: 30)
 //!   `MEMOBUILD_GC_MAX_SIZE_BYTES` — LRU eviction target (default: 0 = unlimited)
 
-use anyhow::Result;
-use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+
+use anyhow::Result;
+use serde::Serialize;
 use tokio::sync::RwLock;
 
 /// Retention policy for garbage collection.

@@ -1,9 +1,10 @@
+use std::fs;
+use std::sync::Arc;
+
 use memobuild::core;
 use memobuild::docker::dag::build_graph_from_instructions;
 use memobuild::docker::parser::parse_dockerfile;
 use memobuild::export::export_image;
-use std::fs;
-use std::sync::Arc;
 use tempfile::tempdir;
 
 #[tokio::test]

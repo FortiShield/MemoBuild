@@ -1,10 +1,13 @@
-use crate::hasher::{ignore::IgnoreRules, walker::walk_dir};
-use anyhow::{Context, Result};
-use blake3::Hasher;
-use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
+
+use anyhow::{Context, Result};
+use blake3::Hasher;
+use rayon::prelude::*;
+
+use crate::hasher::ignore::IgnoreRules;
+use crate::hasher::walker::walk_dir;
 
 /// Chunk size for large-file streaming hashing (64 KB — BLAKE3 optimal)
 const CHUNK_SIZE: usize = 64 * 1024;

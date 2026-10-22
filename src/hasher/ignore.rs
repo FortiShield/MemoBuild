@@ -1,5 +1,6 @@
-use glob::Pattern;
 use std::path::Path;
+
+use glob::Pattern;
 
 /// Parsed ignore rules from .dockerignore or .gitignore
 pub struct IgnoreRules {

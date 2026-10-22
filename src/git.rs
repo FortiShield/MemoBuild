@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
 use std::process::Command;
+
+use anyhow::{Context, Result};
 
 /// Fetch the latest commit hash (HEAD) for a remote Git repository.
 /// Uses `git ls-remote` which is very fast and doesn't require cloning.

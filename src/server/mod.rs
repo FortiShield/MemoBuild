@@ -1,26 +1,23 @@
-use crate::server::metadata::MetadataStore;
-use crate::server::storage::{ArtifactStorage, LocalStorage};
-use crate::storage::storage_from_env;
-use anyhow::Result;
-use axum::{
-    body::Bytes,
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, Query, State,
-    },
-    http::{Request, StatusCode},
-    middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
-    routing::{get, head, post, put},
-    Json, Router,
-};
-use serde::Deserialize;
-use serde::Serialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use anyhow::Result;
+use axum::body::Bytes;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path, Query, State};
+use axum::http::{Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{get, head, post, put};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
 // use tower_governor::GovernorLayer;
+use crate::server::metadata::MetadataStore;
+use crate::server::storage::{ArtifactStorage, LocalStorage};
+use crate::storage::storage_from_env;
 
 pub mod metadata;
 pub mod storage;
@@ -110,7 +107,6 @@ pub async fn start_server(
         .route("/ws", get(ws_handler))
         .layer(middleware::from_fn(add_api_version_header))
         // Add auth routes
-        
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -611,9 +607,13 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let output = metrics.encode();
     (
         StatusCode::OK,
-        axum::response::AppendHeaders([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")]),
+        axum::response::AppendHeaders([(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )]),
         output,
-    ).into_response()
+    )
+        .into_response()
 }
 
 async fn check_layer(

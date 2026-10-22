@@ -1,6 +1,7 @@
-use oci_spec::runtime::*;
 use std::collections::HashMap;
 use std::path::Path;
+
+use oci_spec::runtime::*;
 
 pub fn build_spec(cmd: &str, env: &HashMap<String, String>, rootfs: &Path) -> Spec {
     let process = ProcessBuilder::default()

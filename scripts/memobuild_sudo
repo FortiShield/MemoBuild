@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#
+# memobuild_sudo - run a command with elevated privileges.
+#
+# Usage:
+#   scripts/memobuild_sudo <command> [args...]
+#
+# Behaviour:
+#   * When the current user is already root the command runs unchanged.
+#   * Otherwise the user is asked for confirmation before sudo is used.
+#     Set MEMOBUILD_SKIP_SUDO_PROMPT=1 (or pass -y to scripts/bootstrap) to
+#     skip the confirmation in unattended environments.
+#   * In a non-interactive shell sudo is invoked with -n so a missing password
+#     fails fast instead of hanging forever.
+#
+# Exit codes:
+#   0   the command ran successfully
+#   64  no command was given
+#   69  the command was not found
+#   77  elevation was declined
+#   78  sudo is not available
+
+set -euo pipefail
+
+if (( $# == 0 )); then
+    printf 'usage: memobuild_sudo <command> [args...]\n' >&2
+    exit 64
+fi
+
+if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'error: command not found: %s\n' "$1" >&2
+    exit 69
+fi
+
+# Already privileged, nothing to confirm.
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    exec "$@"
+fi
+
+if ! command -v sudo >/dev/null 2>&1; then
+    printf 'error: sudo is not installed, cannot run: %s\n' "$*" >&2
+    printf '       re-run this command as a user with administrative privileges\n' >&2
+    exit 78
+fi
+
+if [[ "${MEMOBUILD_SKIP_SUDO_PROMPT:-0}" != "1" ]]; then
+    if [[ -t 0 ]]; then
+        printf 'The following command needs elevated privileges:\n'
+        printf '  %s\n' "$*"
+        printf 'Continue? [y/N] '
+        reply=""
+        read -r reply || reply=""
+        case "${reply}" in
+            [yY] | [yY][eE][sS]) ;;
+            *)
+                printf 'error: elevation declined, skipping: %s\n' "$*" >&2
+                exit 77
+                ;;
+        esac
+    else
+        printf 'warning: non-interactive shell, running with sudo -n: %s\n' "$*" >&2
+    fi
+fi
+
+if [[ -t 0 ]]; then
+    exec sudo -- "$@"
+fi
+
+exec sudo -n -- "$@"

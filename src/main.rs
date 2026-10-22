@@ -1,13 +1,14 @@
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
-use memobuild::server;
-use memobuild::{audit, cache, core, docker, executor, export, logging, sbom, slsa, verify};
-use hex::encode as hex_encode;
-use sha2::{Digest, Sha256};
-use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{env, fs};
+
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use hex::encode as hex_encode;
+use memobuild::{
+    audit, cache, core, docker, executor, export, logging, sbom, server, slsa, verify,
+};
+use sha2::{Digest, Sha256};
 use tokio_postgres::NoTls;
 use uuid::Uuid;
 
@@ -236,7 +237,11 @@ async fn main() -> Result<()> {
         }
         Commands::Graph { path, file } => run_graph(path, file).await,
         Commands::ExplainCache { path, file, node } => run_explain_cache(path, file, node).await,
-        Commands::Server { port, postgres, database_url } => {
+        Commands::Server {
+            port,
+            postgres,
+            database_url,
+        } => {
             let webhook_url = env::var("MEMOBUILD_WEBHOOK").ok();
             let data_dir = env::current_dir()?.join(".memobuild-server");
             fs::create_dir_all(&data_dir)?;
@@ -259,10 +264,13 @@ async fn main() -> Result<()> {
                 if let Some(db_url) = database_url.as_ref() {
                     let config = parse_postgres_url(db_url)?;
                     let (client, connection) = tokio_postgres::connect(
-                        &format!("postgresql://{}:{}@{}:{}/{}",
-                            config.user, config.password, config.host, config.port, config.database),
+                        &format!(
+                            "postgresql://{}:{}@{}:{}/{}",
+                            config.user, config.password, config.host, config.port, config.database
+                        ),
                         NoTls,
-                    ).await?;
+                    )
+                    .await?;
                     tokio::spawn(async move {
                         if let Err(e) = connection.await {
                             eprintln!("connection error: {}", e);
@@ -276,7 +284,15 @@ async fn main() -> Result<()> {
                 None
             };
 
-            server::start_server(port, data_dir, webhook_url, tls_config, admin_token, auth_db_client).await
+            server::start_server(
+                port,
+                data_dir,
+                webhook_url,
+                tls_config,
+                admin_token,
+                auth_db_client,
+            )
+            .await
         }
         Commands::Scheduler { port } => start_scheduler(port).await,
         Commands::Grpc { port } => start_reapi_server(port).await,
@@ -460,7 +476,10 @@ async fn run_build(
     let attestation = provenance_generator.sign(&provenance)?;
     let attestation_path = output_dir.join("attestation.json");
     provenance_generator.save_attestation(&attestation, &attestation_path)?;
-    println!("🔐 SLSA attestation written to {}", attestation_path.display());
+    println!(
+        "🔐 SLSA attestation written to {}",
+        attestation_path.display()
+    );
 
     audit::log_build_event(&audit_logger, &build_id, "completed");
 
@@ -667,8 +686,8 @@ async fn _run_generate_k8s() -> Result<()> {
 async fn start_scheduler(_port: u16) -> Result<()> {
     #[cfg(feature = "remote-exec")]
     {
-        use memobuild::remote_exec::scheduler::SchedulingStrategy;
-        use memobuild::remote_exec::{scheduler::Scheduler, server::ExecutionServer};
+        use memobuild::remote_exec::scheduler::{Scheduler, SchedulingStrategy};
+        use memobuild::remote_exec::server::ExecutionServer;
 
         println!(
             "📡 Starting Remote Execution Scheduler on port {}...",
@@ -689,8 +708,8 @@ async fn start_scheduler(_port: u16) -> Result<()> {
 async fn start_reapi_server(_port: u16) -> Result<()> {
     #[cfg(feature = "remote-exec")]
     {
-        use memobuild::remote_exec::scheduler::SchedulingStrategy;
-        use memobuild::remote_exec::{grpc_server, scheduler::Scheduler};
+        use memobuild::remote_exec::grpc_server;
+        use memobuild::remote_exec::scheduler::{Scheduler, SchedulingStrategy};
 
         println!(
             "🚀 Starting MemoBuild REAPI gRPC server on port {}...",
@@ -713,7 +732,8 @@ async fn start_worker(
 ) -> Result<()> {
     #[cfg(feature = "remote-exec")]
     {
-        use memobuild::remote_exec::{worker::WorkerNode, worker_server::WorkerServer};
+        use memobuild::remote_exec::worker::WorkerNode;
+        use memobuild::remote_exec::worker_server::WorkerServer;
         use memobuild::sandbox;
 
         println!(

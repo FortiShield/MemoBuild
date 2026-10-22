@@ -1,8 +1,9 @@
-use crate::dashboard::BuildEvent;
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+use crate::dashboard::BuildEvent;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteCacheEntry {
@@ -76,21 +77,28 @@ impl HttpRemoteCache {
 
         if let Some(tls) = tls_config {
             if let Ok(client_config) = tls.client_config() {
-                builder = builder.use_rustls_tls().use_preconfigured_tls(client_config);
+                builder = builder
+                    .use_rustls_tls()
+                    .use_preconfigured_tls(client_config);
             }
         }
 
         let client = builder.build().unwrap_or_else(|_| Client::new());
 
-        Self { base_url, client, auth_token }
+        Self {
+            base_url,
+            client,
+            auth_token,
+        }
     }
 }
+
+use std::io::{Read, Write};
+use std::time::Duration;
 
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::io::{Read, Write};
-use std::time::Duration;
 
 /// Helper for retrying operations with exponential backoff
 async fn retry_with_backoff<F, Fut, T>(

@@ -1,11 +1,12 @@
-use crate::export::utils::{sha256_bytes, sha256_string};
-use crate::graph::Node;
-use anyhow::Result;
-
-use flate2::Compression;
 use std::fs::{self, File};
 use std::path::Path;
+
+use anyhow::Result;
+use flate2::Compression;
 use tar::Builder;
+
+use crate::export::utils::{sha256_bytes, sha256_string};
+use crate::graph::Node;
 
 #[derive(Debug, Clone)]
 pub struct LayerInfo {

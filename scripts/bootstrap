@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+#
+# bootstrap - prepare a MemoBuild checkout for development.
+#
+# The script detects the current platform and hands over to the matching
+# platform bootstrap:
+#
+#   scripts/linux/bootstrap
+#   scripts/macos/bootstrap
+#   scripts/windows/bootstrap.ps1
+#
+# Options:
+#   -h, --help      Show this help message.
+#   -y, --yes       Do not ask before elevating privileges (unattended use).
+#   --dry-run       Print what would be done, change nothing.
+#   --check         Only verify the environment, install nothing.
+#   --no-lfs        Skip the Git LFS setup step.
+#
+# Environment overrides:
+#   MEMOBUILD_SKIP_SUDO_PROMPT=1   Never ask before elevating privileges.
+#   MEMOBUILD_DRY_RUN=1            Same as --dry-run.
+#   MEMOBUILD_CHECK_ONLY=1         Same as --check.
+#   MEMOBUILD_SKIP_CARGO_AUDIT=1   Do not install cargo-audit.
+#   NO_COLOR=1                     Disable ANSI colours.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export MEMOBUILD_REPO_ROOT="${REPO_ROOT}"
+
+cd "${REPO_ROOT}"
+
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
+PLATFORM_ARGS=()
+SKIP_LFS=0
+
+usage() {
+    cat <<EOF
+Usage: ./scripts/bootstrap [options]
+
+Prepare this checkout for MemoBuild development by running the platform-specific
+bootstrap steps. The script is idempotent: already installed tools are detected
+and left untouched.
+
+Options:
+  -h, --help       Show this help message.
+  -y, --yes        Do not ask before elevating privileges (unattended use).
+  --dry-run        Print what would be done, change nothing.
+  --check          Only verify the environment, install nothing.
+  --no-lfs         Skip the Git LFS setup step.
+
+Environment overrides:
+  MEMOBUILD_SKIP_SUDO_PROMPT=1   Never ask before elevating privileges.
+  MEMOBUILD_DRY_RUN=1            Same as --dry-run.
+  MEMOBUILD_CHECK_ONLY=1         Same as --check.
+  MEMOBUILD_SKIP_CARGO_AUDIT=1   Do not install cargo-audit.
+  NO_COLOR=1                     Disable ANSI colours.
+EOF
+}
+
+detect_platform() {
+    case "$(uname -s)" in
+        Darwin) printf 'macos\n' ;;
+        Linux) printf 'linux\n' ;;
+        MINGW64_NT* | MSYS_NT* | CYGWIN*) printf 'windows\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -y | --yes)
+            export MEMOBUILD_SKIP_SUDO_PROMPT=1
+            PLATFORM_ARGS+=("$1")
+            ;;
+        --dry-run)
+            export MEMOBUILD_DRY_RUN=1
+            PLATFORM_ARGS+=("--dry-run")
+            ;;
+        --check)
+            export MEMOBUILD_CHECK_ONLY=1
+            PLATFORM_ARGS+=("--check")
+            ;;
+        --no-lfs)
+            SKIP_LFS=1
+            ;;
+        *)
+            printf 'error: unknown argument %s\n' "$1" >&2
+            printf 'Run ./scripts/bootstrap --help to see available options.\n' >&2
+            exit 64
+            ;;
+    esac
+    shift
+done
+
+PLATFORM="$(detect_platform)"
+
+case "${PLATFORM}" in
+    macos) PLATFORM_SCRIPT="${REPO_ROOT}/scripts/macos/bootstrap" ;;
+    linux) PLATFORM_SCRIPT="${REPO_ROOT}/scripts/linux/bootstrap" ;;
+    windows) PLATFORM_SCRIPT="${REPO_ROOT}/scripts/windows/bootstrap.ps1" ;;
+    *)
+        mb_error "no bootstrap script is defined for this platform ($(uname -s))"
+        exit 1
+        ;;
+esac
+
+if [[ ! -f "${PLATFORM_SCRIPT}" ]]; then
+    mb_error "missing platform bootstrap script: ${PLATFORM_SCRIPT}"
+    exit 1
+fi
+
+if mb_check_only; then
+    mb_info "check-only mode, nothing will be installed"
+fi
+
+if ((SKIP_LFS == 0)); then
+    mb_ensure_git_lfs || exit 1
+fi
+
+# Pass the --no-lfs flag through to the platform bootstrap so it can
+# also skip Git LFS installation when requested.
+if ((SKIP_LFS == 1)); then
+    PLATFORM_ARGS+=("--no-lfs")
+fi
+
+case "${PLATFORM}" in
+    macos)
+        mb_title "MemoBuild bootstrap (macOS)"
+        bash "${PLATFORM_SCRIPT}" ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"}
+        ;;
+    linux)
+        mb_title "MemoBuild bootstrap (Linux)"
+        bash "${PLATFORM_SCRIPT}" ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"}
+        ;;
+    windows)
+        mb_title "MemoBuild bootstrap (Windows)"
+        POWERSHELL=""
+        for candidate in pwsh powershell; do
+            if command -v "${candidate}" >/dev/null 2>&1; then
+                POWERSHELL="${candidate}"
+                break
+            fi
+        done
+        if [[ -z "${POWERSHELL}" ]]; then
+            mb_error "neither pwsh nor powershell was found on PATH"
+            exit 1
+        fi
+        WINDOWS_ARGS=()
+        for arg in ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"}; do
+            case "${arg}" in
+                -y | --yes) WINDOWS_ARGS+=("-Yes") ;;
+                --dry-run) WINDOWS_ARGS+=("-DryRun") ;;
+                --check) WINDOWS_ARGS+=("-Check") ;;
+                *) WINDOWS_ARGS+=("${arg}") ;;
+            esac
+        done
+        if ((SKIP_LFS == 1)); then
+            WINDOWS_ARGS+=("-NoLfs")
+        fi
+        WINDOWS_SCRIPT="${PLATFORM_SCRIPT}"
+        if command -v cygpath >/dev/null 2>&1; then
+            WINDOWS_SCRIPT="$(cygpath -w "${PLATFORM_SCRIPT}")"
+        fi
+        "${POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${WINDOWS_SCRIPT}" ${WINDOWS_ARGS[@]+"${WINDOWS_ARGS[@]}"}
+        ;;
+esac
+
+if mb_check_only; then
+    mb_ok "environment check finished"
+    exit 0
+fi
+
+mb_print_path_hint
+mb_print_next_steps

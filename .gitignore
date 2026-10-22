@@ -11,3 +11,4 @@ extension_build.log
 Dockerfile.ext
 file1.txt
 data/
+dist/

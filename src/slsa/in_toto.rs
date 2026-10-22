@@ -1,8 +1,9 @@
 //! in-toto DSSE signature support
 
-use crate::slsa::Signature;
 use anyhow::Result;
 use serde_json::json;
+
+use crate::slsa::Signature;
 
 /// Sign payload using DSSE (Dead Simple Signed Envelopes)
 pub fn sign_dsse(payload: &str) -> Result<Signature> {

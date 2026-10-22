@@ -1,8 +1,8 @@
-use crate::remote_exec::RemoteExecutor;
-use crate::remote_exec::{ActionRequest, ActionResult};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
+
+use crate::remote_exec::{ActionRequest, ActionResult, RemoteExecutor};
 
 pub struct RemoteExecClient {
     pub endpoint: String,

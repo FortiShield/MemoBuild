@@ -1,8 +1,9 @@
-use crate::dashboard::BuildEvent;
-use crate::graph::BuildGraph;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::dashboard::BuildEvent;
+use crate::graph::BuildGraph;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteCacheEntry {

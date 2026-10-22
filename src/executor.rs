@@ -1,10 +1,12 @@
-use crate::cache::HybridCache;
-use crate::graph::BuildGraph;
+use std::sync::Arc;
+use std::time::Instant;
+
 use anyhow::Result;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::Arc;
-use std::time::Instant;
+
+use crate::cache::HybridCache;
+use crate::graph::BuildGraph;
 
 /// Incremental executor that supports parallel execution and selective rebuilds
 pub struct IncrementalExecutor {

@@ -3,12 +3,13 @@
 //! This module generates SLSA (Supply-chain Levels for Software Artifacts) provenance
 //! for built artifacts. It produces in-toto attestation bundles with DSSE signatures.
 
+use std::fs;
+use std::path::Path;
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::fs;
-use std::path::Path;
 
 pub mod in_toto;
 
@@ -74,7 +75,7 @@ impl ProvenanceGenerator {
     pub fn sign(&self, provenance: &Provenance) -> Result<Attestation> {
         let payload = serde_json::to_string(provenance)?;
         let signature = in_toto::sign_dsse(&payload)?;
-        
+
         Ok(Attestation {
             payload_type: "application/vnd.in-toto+json".to_string(),
             payload,
@@ -127,8 +128,9 @@ impl ProvenanceGenerator {
 }
 
 pub mod cli {
-    use super::*;
     use std::path::Path;
+
+    use super::*;
 
     pub fn generate_cmd(
         source_uri: &str,

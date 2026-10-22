@@ -1,8 +1,10 @@
-use crate::dashboard::BuildEvent;
-use crate::remote_cache::RemoteCache;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
+
+use crate::dashboard::BuildEvent;
+use crate::remote_cache::RemoteCache;
 
 pub mod health;
 pub mod region;

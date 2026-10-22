@@ -3,15 +3,17 @@
 //! This module implements multi-master cache replication with consistent hashing
 //! for horizontal scaling and fault tolerance.
 
-use crate::cache::remote::RemoteCache;
-use crate::dashboard::BuildEvent;
-use crate::graph::BuildGraph;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::cache::remote::RemoteCache;
+use crate::dashboard::BuildEvent;
+use crate::graph::BuildGraph;
 
 /// Configuration for a cache cluster node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -395,7 +397,8 @@ impl RemoteCache for DistributedCache {
                     self.local_cache.put_layer(hash, &data).await?;
                     if let Some(primary_node) = self.cluster.get_primary_node(hash).await? {
                         if let Some(primary_client) = self.get_remote_client(&primary_node).await {
-                            let _ = primary_client.put_layer(hash, &data).await; // Best effort
+                            let _ = primary_client.put_layer(hash, &data).await;
+                            // Best effort
                         }
                     }
                     return Ok(Some(data));

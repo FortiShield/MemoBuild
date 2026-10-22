@@ -86,7 +86,7 @@ helm install memobuild-cluster ./charts/memobuild-cluster \
 Visit the [examples/](./examples) directory to see ready-to-use projects:
 - **[Node.js App](./examples/nodejs-app)**: Simple web server with dependency caching.
 - **[Rust App](./examples/rust-app)**: High-performance async app showing complex build caching.
-- **[Cluster Demo](./demo_cluster.sh)**: Multi-node distributed cache setup.
+- **[Cluster Demo](./scripts/demo_cluster.sh)**: Multi-node distributed cache setup.
 
 ---
 
@@ -286,6 +286,24 @@ memobuild server --port 8080 --storage ./cache-data
 export MEMOBUILD_REMOTE_URL=http://localhost:8080
 memobuild build .
 ```
+
+---
+
+## 🛠️ Development Setup
+
+```bash
+git clone https://github.com/nrelab/MemoBuild.git
+cd MemoBuild
+./scripts/bootstrap
+```
+
+The bootstrap script installs the toolchain MemoBuild needs (Rust, a C
+toolchain, `protoc`, `cargo-audit`), works on Linux, macOS and Windows, and is
+idempotent. Use `./scripts/bootstrap --check` to verify a machine without
+changing anything.
+
+See **[docs/DEVELOPMENT_SETUP.md](./docs/DEVELOPMENT_SETUP.md)** for the full
+list of options, platform notes and troubleshooting.
 
 ---
 

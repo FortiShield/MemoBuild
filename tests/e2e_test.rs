@@ -1,12 +1,14 @@
 #[cfg(feature = "server")]
-use memobuild::{cache, core, executor, remote_cache, server};
-use memobuild::{docker, graph::NodeKind};
-#[cfg(feature = "server")]
 use std::fs;
 #[cfg(feature = "server")]
 use std::sync::Arc;
 #[cfg(feature = "server")]
 use std::time::Duration;
+
+use memobuild::docker;
+use memobuild::graph::NodeKind;
+#[cfg(feature = "server")]
+use memobuild::{cache, core, executor, remote_cache, server};
 #[cfg(feature = "server")]
 use tempfile::tempdir;
 

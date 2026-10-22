@@ -5,11 +5,12 @@ pub mod oci_exporter;
 pub mod registry;
 pub mod utils;
 
+use std::path::PathBuf;
+
+use anyhow::Result;
 pub use oci_exporter::OciExporter;
 
 use crate::graph::BuildGraph;
-use anyhow::Result;
-use std::path::PathBuf;
 
 pub fn export_image(graph: &BuildGraph, image_name: &str, reproducible: bool) -> Result<PathBuf> {
     let output_dir = PathBuf::from(".memobuild-output").join(image_name.replace(':', "-"));

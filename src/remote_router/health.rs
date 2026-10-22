@@ -1,6 +1,7 @@
-use crate::remote_router::region::RegionNode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use crate::remote_router::region::RegionNode;
 
 pub async fn start_health_service(regions: Vec<Arc<RegionNode>>) {
     let mut interval = tokio::time::interval(Duration::from_secs(30));

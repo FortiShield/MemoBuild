@@ -1,8 +1,10 @@
+use std::path::Path;
+use std::sync::Mutex;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use rusqlite::{params, Connection};
-use std::path::Path;
-use std::sync::Mutex;
+use serde::{Deserialize, Serialize};
 
 #[async_trait]
 pub trait MetadataStoreTrait: Send + Sync {
@@ -414,8 +416,6 @@ impl MetadataStoreTrait for MetadataStore {
     }
 }
 
-use serde::{Deserialize, Serialize};
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BuildRecord {
     pub id: i32,
@@ -434,8 +434,9 @@ pub struct LayerStats {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_metadata_store() {

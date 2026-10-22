@@ -3,22 +3,22 @@
 //! This module provides the HTTP server for the distributed cache cluster,
 //! including cluster management endpoints and auto-scaling integration.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use anyhow::Result;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::Json;
+use axum::Router;
+use serde::Deserialize;
+use tokio::sync::broadcast;
+
 use crate::auto_scaling::{AutoScaler, ScalingMetrics};
 use crate::cache_cluster::{CacheCluster, ClusterStatus};
 use crate::remote_cache::RemoteCache;
 use crate::server::metadata::MetadataStoreTrait;
 use crate::server::storage::ArtifactStorage;
-use anyhow::Result;
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::Json,
-    Router,
-};
-use serde::Deserialize;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::broadcast;
 
 /// Application state for the cluster server
 pub struct ClusterAppState {

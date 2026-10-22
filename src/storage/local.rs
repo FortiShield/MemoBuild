@@ -1,8 +1,10 @@
-use super::ArtifactStorage;
-use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+
+use super::ArtifactStorage;
 
 pub struct LocalStorage {
     base_dir: PathBuf,
@@ -71,8 +73,9 @@ impl ArtifactStorage for LocalStorage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn test_local_storage() {

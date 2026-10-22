@@ -1,10 +1,11 @@
+use std::fs;
+use std::sync::Arc;
+
 use clap::Parser;
 /// Scalability test runner with comprehensive reporting
 ///
 /// Run with: cargo run --example load_test_runner --release -- --clients 100 --duration 60
 use memobuild::loadtest::*;
-use std::fs;
-use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "MemoBuild Load Test Runner")]
