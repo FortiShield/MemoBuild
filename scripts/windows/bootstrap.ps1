@@ -413,7 +413,7 @@ function Test-Environment {
     if ($cCompiler) {
         Write-Ok 'c compiler      available'
     } else {
-        Write-Warn 'c compiler      missing (install the Visual Studio Build Tools)'
+        Write-Err 'c compiler      missing (install the Visual Studio Build Tools)'
         $failures++
     }
 
