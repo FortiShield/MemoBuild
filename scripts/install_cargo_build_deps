@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# Installs all cargo-managed dependencies required to build MemoBuild.
+#
+# This script should be platform-agnostic (eg. no unix-only references like /dev/null).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The scripts below are addressed relative to this script, not to the current
+# working directory, so that the script can be called from anywhere.
+"${SCRIPT_DIR}/install_cargo_binstall"
+
+# The internal channel config is optional: it is only available to
+# contributors with access to the private configuration, the install script
+# itself is a no-op for everyone else.
+if ! "${SCRIPT_DIR}/install_channel_config"; then
+    echo "Skipping internal channel config installation (no repo access)."
+fi
+
+# Platform specific build dependencies, only present on macOS.
+if [ "$(uname -s)" = "Darwin" ] && [ -x "${SCRIPT_DIR}/macos/install_build_deps" ]; then
+    "${SCRIPT_DIR}/macos/install_build_deps"
+fi

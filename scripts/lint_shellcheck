@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+#
+# lint_shellcheck - run ShellCheck over the shell scripts in this repository.
+#
+# Usage:
+#   scripts/lint_shellcheck [options] [file...]
+#
+# Options:
+#   -ci, --ci             Fail when ShellCheck is not installed. Implied when
+#                         the GITHUB_ACTIONS environment variable is set.
+#   -s, --severity LEVEL  Minimum severity to report: style, warning or info.
+#   -h, --help            Show this help message.
+#
+# Without file arguments every shell script in the repository is linted. The
+# scripts are discovered by their shebang, so files without a .sh extension are
+# picked up as well. ShellCheck runs with -x so that sourced files are
+# followed, which is what makes the `source scripts/lib/common.sh` directives
+# in the bootstrap scripts work.
+#
+# Exit codes:
+#   0  no findings
+#   1  ShellCheck reported findings
+#   2  invalid usage
+#   3  ShellCheck is required but not installed
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
+CI_MODE=false
+SEVERITY=""
+FILES=()
+
+usage() {
+    cat <<EOF
+Usage: ./scripts/lint_shellcheck [options] [file...]
+
+Run ShellCheck over the shell scripts in this repository.
+
+Options:
+  -ci, --ci             Fail when ShellCheck is not installed.
+  -s, --severity LEVEL  Minimum severity to report: style, warning or info.
+  -h, --help            Show this help message.
+
+Examples:
+  ./scripts/lint_shellcheck
+  ./scripts/lint_shellcheck --severity warning
+  ./scripts/lint_shellcheck scripts/bootstrap
+EOF
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        -ci | --ci)
+            CI_MODE=true
+            shift
+            ;;
+        -s | --severity)
+            if (( $# < 2 )); then
+                echo "error: --severity requires a level (style, warning or info)" >&2
+                exit 2
+            fi
+            SEVERITY="$2"
+            shift 2
+            ;;
+        --severity=*)
+            SEVERITY="${1#*=}"
+            shift
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            while (( $# > 0 )); do
+                FILES+=("$1")
+                shift
+            done
+            ;;
+        -*)
+            echo "error: unknown option '$1'" >&2
+            echo "Run ./scripts/lint_shellcheck --help to see available options." >&2
+            exit 2
+            ;;
+        *)
+            FILES+=("$1")
+            shift
+            ;;
+    esac
+done
+
+case "${SEVERITY}" in
+    "" | style | warning | info) ;;
+    *)
+        echo "error: invalid severity '${SEVERITY}', expected style, warning or info" >&2
+        exit 2
+        ;;
+esac
+
+if ! command -v shellcheck >/dev/null 2>&1; then
+    echo "No ShellCheck installation detected."
+    if [[ "${CI_MODE}" == true || "${GITHUB_ACTIONS:-}" == true ]]; then
+        echo "Aborting because ShellCheck is required in CI." >&2
+        exit 3
+    fi
+    echo "Skipping ShellCheck."
+    exit 0
+fi
+
+# Directories that hold generated or vendored code.
+EXCLUDED_DIRS=(
+    .git
+    target
+    node_modules
+    .memobuild-output
+    .memobuild-server
+)
+
+# A file is a shell script when its first line names a shell interpreter.
+SHELL_SHEBANG='^#!.*(/bin/sh|/bin/bash|/usr/bin/env +(ba|z|k|da)?sh)'
+
+discover_scripts() {
+    local -a args=()
+    local dir
+    for dir in "${EXCLUDED_DIRS[@]}"; do
+        args+=(--exclude-dir="${dir}")
+    done
+
+    local file
+    while IFS= read -r file; do
+        printf '%s\n' "${file}"
+    done < <(
+        grep -rlI -E "${SHELL_SHEBANG}" "${args[@]}" . 2>/dev/null |
+            sed 's|^\./||' |
+            sort
+    )
+}
+
+if ((${#FILES[@]} == 0)); then
+    mapfile -t FILES < <(discover_scripts)
+fi
+
+if ((${#FILES[@]} == 0)); then
+    echo "No shell scripts found to lint."
+    exit 0
+fi
+
+SHELLCHECK_ARGS=(-x --color=auto)
+if [[ -n "${SEVERITY}" ]]; then
+    SHELLCHECK_ARGS+=("--severity=${SEVERITY}")
+fi
+
+printf 'Linting %d shell script(s) with ShellCheck %s\n' "${#FILES[@]}" "$(shellcheck --version | awk '/^version:/ {print $2}')"
+
+STATUS=0
+if ! shellcheck "${SHELLCHECK_ARGS[@]}" "${FILES[@]}"; then
+    STATUS=1
+fi
+
+if ((STATUS == 0)); then
+    printf '\033[0;32mok\033[0m   no findings in %d script(s)\n' "${#FILES[@]}"
+else
+    printf '\033[0;31mFAIL\033[0m ShellCheck reported findings, run ShellCheck for details\n' >&2
+fi
+
+exit "${STATUS}"

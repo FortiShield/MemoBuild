@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# Script to format (Rust) code.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+EXTRA_ARGS=()
+
+while (( "$#" )); do
+    case "$1" in
+        --check)
+            EXTRA_ARGS+=("--check")
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Format with specific configuration around how module imports are formatted.
+#
+# We need to set RUSTC_BOOTSTRAP to allow using unstable features on a stable toolchain.
+#
+# The array expansion is written so that it also works on bash 3.2, the version
+# macOS ships, where an empty array under `set -u` is an error.
+RUSTC_BOOTSTRAP=1 cargo fmt --all -- --config imports_granularity=Module --config group_imports=StdExternalCrate ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

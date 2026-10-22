@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+#
+# Linux bootstrap - install the toolchain required to build MemoBuild.
+#
+# Usage:
+#   scripts/linux/bootstrap [-y|--yes] [--dry-run] [--check]
+#
+# The script is idempotent: packages and tools that are already present are
+# detected and skipped.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+export MEMOBUILD_MIN_RUST_VERSION="${MEMOBUILD_MIN_RUST_VERSION:-1.75.0}"
+
+# The repository root is derived from the location of this script so that the
+# bootstrap also works when it is invoked directly, without the wrapper in
+# scripts/bootstrap setting MEMOBUILD_REPO_ROOT.
+export MEMOBUILD_REPO_ROOT="${MEMOBUILD_REPO_ROOT:-$(mb_repo_root)}"
+
+SUDO="${MEMOBUILD_REPO_ROOT}/scripts/memobuild_sudo"
+
+if ! mb_parse_bootstrap_args "$@"; then
+    exit 64
+fi
+
+# ---------------------------------------------------------------------------
+# Package management
+# ---------------------------------------------------------------------------
+
+detect_package_manager() {
+    if command -v apt-get >/dev/null 2>&1; then
+        printf 'apt\n'
+    elif command -v dnf >/dev/null 2>&1; then
+        printf 'dnf\n'
+    elif command -v pacman >/dev/null 2>&1; then
+        printf 'pacman\n'
+    else
+        printf 'none\n'
+    fi
+}
+
+# Packages needed by MemoBuild, per package manager.
+#
+#   build-essential / base-devel  C toolchain, required by the bundled SQLite
+#   pkg-config                    native dependency detection
+#   protobuf-compiler             protoc, required by the containerd feature
+#   git-lfs                       large file storage
+#   curl, ca-certificates, unzip  downloads and archive handling
+packages_for() {
+    case "$1" in
+        apt)
+            printf '%s\n' build-essential pkg-config curl ca-certificates unzip git-lfs protobuf-compiler
+            ;;
+        dnf)
+            printf '%s\n' gcc gcc-c++ make pkgconf-pkg-config curl ca-certificates unzip git-lfs protobuf-compiler
+            ;;
+        pacman)
+            printf '%s\n' base-devel pkgconf curl ca-certificates unzip git-lfs protobuf
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+package_installed() {
+    local manager="$1"
+    local package="$2"
+
+    case "${manager}" in
+        apt)
+            [[ "$(dpkg-query -W -f='${db:Status-Status}' "${package}" 2>/dev/null || true)" == "installed" ]]
+            ;;
+        dnf)
+            rpm -q "${package}" >/dev/null 2>&1
+            ;;
+        pacman)
+            pacman -Qi "${package}" >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+install_packages() {
+    local manager="$1"
+    shift
+
+    local -a packages=("$@")
+    local -a missing=()
+    local package
+
+    for package in "${packages[@]}"; do
+        if ! package_installed "${manager}" "${package}"; then
+            missing+=("${package}")
+        fi
+    done
+
+    if ((${#missing[@]} == 0)); then
+        mb_ok "system packages are already installed"
+        return 0
+    fi
+
+    if mb_dry_run; then
+        mb_skip "would install system packages: ${missing[*]}"
+        return 0
+    fi
+
+    mb_step "installing system packages: ${missing[*]}"
+
+    case "${manager}" in
+        apt)
+            "${SUDO}" apt-get update
+            "${SUDO}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+            ;;
+        dnf)
+            "${SUDO}" dnf install -y "${missing[@]}"
+            ;;
+        pacman)
+            "${SUDO}" pacman -S --needed --noconfirm "${missing[@]}"
+            ;;
+        *)
+            mb_error "unsupported package manager: ${manager}"
+            return 1
+            ;;
+    esac
+
+    mb_ok "system packages installed"
+}
+
+# ---------------------------------------------------------------------------
+# Optional components
+# ---------------------------------------------------------------------------
+
+# Docker is only needed to build the desktop extension, so it is opt-in.
+install_docker() {
+    if mb_have_cmd docker; then
+        mb_ok "docker is already installed"
+        return 0
+    fi
+
+    if [[ "${MEMOBUILD_INSTALL_DOCKER:-0}" != "1" ]]; then
+        mb_skip "docker (set MEMOBUILD_INSTALL_DOCKER=1 to install it)"
+        return 0
+    fi
+
+    local manager
+    manager="$(detect_package_manager)"
+    if [[ "${manager}" != "apt" ]]; then
+        mb_warn "automated docker installation is only supported on Debian/Ubuntu"
+        return 0
+    fi
+
+    if mb_dry_run; then
+        mb_skip "would install docker from the official Docker apt repository"
+        return 0
+    fi
+
+    mb_step "installing Docker from the official apt repository"
+    "${SUDO}" env DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl
+    "${SUDO}" install -m 0755 -d /etc/apt/keyrings
+
+    local codename suite
+    codename="$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-}")"
+    if [[ -z "${codename}" ]]; then
+        mb_warn "could not detect the distribution codename, skipping the Docker repository"
+        return 0
+    fi
+
+    # Docker publishes a separate repository per distribution, installing the
+    # Ubuntu packages on Debian pulls in incompatible dependencies.
+    suite="$(. /etc/os-release && printf '%s' "${ID:-ubuntu}")"
+    case "${suite}" in
+        debian | ubuntu) ;;
+        *)
+            mb_warn "automated Docker installation is not supported on ${suite}"
+            return 0
+            ;;
+    esac
+
+    "${SUDO}" curl -fsSL "https://download.docker.com/linux/${suite}/gpg" -o /etc/apt/keyrings/docker.asc
+    "${SUDO}" chmod a+r /etc/apt/keyrings/docker.asc
+
+    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
+        "$(dpkg --print-architecture)" "${suite}" "${codename}" | "${SUDO}" tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+    "${SUDO}" apt-get update
+    "${SUDO}" env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    mb_ok "docker installed"
+}
+
+# linuxdeploy is used to package Linux binaries, it is opt-in because no
+# release workflow in this repository consumes it yet.
+install_linuxdeploy() {
+    if mb_have_cmd linuxdeploy; then
+        mb_ok "linuxdeploy is already installed"
+        return 0
+    fi
+
+    if [[ "${MEMOBUILD_INSTALL_LINUXDEPLOY:-0}" != "1" ]]; then
+        mb_skip "linuxdeploy (set MEMOBUILD_INSTALL_LINUXDEPLOY=1 to install it)"
+        return 0
+    fi
+
+    if mb_dry_run; then
+        mb_skip "would download linuxdeploy into ./dist"
+        return 0
+    fi
+
+    local repo_root target_dir arch archive
+    repo_root="$(mb_repo_root)"
+    target_dir="${repo_root}/dist"
+
+    case "$(uname -m)" in
+        x86_64 | amd64) arch="x86_64" ;;
+        aarch64 | arm64) arch="aarch64" ;;
+        *)
+            mb_warn "linuxdeploy has no release for $(uname -m), skipping it"
+            return 0
+            ;;
+    esac
+    archive="linuxdeploy-${arch}.AppImage"
+
+    mkdir -p "${target_dir}"
+    mb_step "downloading linuxdeploy into ${target_dir}"
+    curl -fsSL "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/${archive}" \
+        -o "${target_dir}/${archive}"
+    chmod +x "${target_dir}/${archive}"
+    mb_ok "linuxdeploy installed into ${target_dir}"
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+main() {
+    local manager
+    manager="$(detect_package_manager)"
+
+    if [[ "${manager}" == "none" ]]; then
+        mb_error "no supported package manager found (apt, dnf or pacman is required)"
+        return 1
+    fi
+
+    mb_info "package manager: ${manager}"
+
+    if mb_check_only; then
+        local status=0
+        mb_verify_environment || status=$?
+        return "${status}"
+    fi
+
+    local -a packages=()
+    mapfile -t packages < <(packages_for "${manager}")
+    install_packages "${manager}" "${packages[@]}"
+
+    mb_ensure_rust
+    mb_ensure_cargo_audit
+    install_docker
+    install_linuxdeploy
+
+    local status=0
+    mb_verify_environment || status=$?
+    if ((status != 0)) && ! mb_dry_run; then
+        # A dry run reports the problems it found but does not fail: it only
+        # shows what would happen.
+        return "${status}"
+    fi
+    return 0
+}
+
+main "$@"

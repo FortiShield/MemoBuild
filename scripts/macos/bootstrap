@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# macOS bootstrap - install the toolchain required to build MemoBuild.
+#
+# Usage:
+#   scripts/macos/bootstrap [-y|--yes] [--dry-run] [--check]
+#
+# The script is idempotent: packages and tools that are already present are
+# detected and skipped.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+export MEMOBUILD_MIN_RUST_VERSION="${MEMOBUILD_MIN_RUST_VERSION:-1.75.0}"
+
+# The repository root is derived from the location of this script so that the
+# bootstrap also works when it is invoked directly, without the wrapper in
+# scripts/bootstrap setting MEMOBUILD_REPO_ROOT.
+export MEMOBUILD_REPO_ROOT="${MEMOBUILD_REPO_ROOT:-$(mb_repo_root)}"
+
+SUDO="${MEMOBUILD_REPO_ROOT}/scripts/memobuild_sudo"
+
+if ! mb_parse_bootstrap_args "$@"; then
+    exit 64
+fi
+
+# ---------------------------------------------------------------------------
+# Homebrew
+# ---------------------------------------------------------------------------
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return 0
+    fi
+    local candidate
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+        if [[ -x "${candidate}" ]]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+brew_install() {
+    local package="$1"
+    local brew="$2"
+
+    if "${brew}" list --formula "${package}" >/dev/null 2>&1; then
+        mb_ok "${package} is already installed"
+        return 0
+    fi
+
+    if mb_dry_run; then
+        mb_skip "would install ${package} with Homebrew"
+        return 0
+    fi
+
+    mb_step "installing ${package} with Homebrew"
+    "${brew}" install "${package}"
+    mb_ok "${package} installed"
+}
+
+# ---------------------------------------------------------------------------
+# Xcode
+# ---------------------------------------------------------------------------
+
+ensure_xcode() {
+    if xcode-select -p >/dev/null 2>&1; then
+        mb_ok "Xcode command line tools are active ($(xcode-select -p))"
+    else
+        mb_warn "Xcode command line tools are missing"
+        if mb_dry_run; then
+            mb_skip "would trigger the Xcode command line tools installer"
+            return 0
+        fi
+        mb_step "installing the Xcode command line tools, follow the installer dialog"
+        xcode-select --install || true
+        mb_warn "finish the Xcode installer and re-run ./scripts/bootstrap"
+        return 1
+    fi
+
+    # Prefer a full Xcode installation when one is present on disk.
+    if [[ -d "/Applications/Xcode.app" ]]; then
+        local active
+        active="$(xcode-select -p)"
+        if [[ "${active}" != "/Applications/Xcode.app/Contents/Developer" ]]; then
+            mb_step "pointing the active developer directory at /Applications/Xcode.app"
+            if mb_dry_run; then
+                mb_skip "would run: xcode-select --switch /Applications/Xcode.app/Contents/Developer"
+                return 0
+            fi
+            "${SUDO}" xcode-select --switch /Applications/Xcode.app/Contents/Developer
+            mb_ok "active developer directory updated"
+        else
+            mb_ok "/Applications/Xcode.app is already the active developer directory"
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Rust targets
+# ---------------------------------------------------------------------------
+
+ensure_rust_targets() {
+    if ! mb_have_cmd rustup; then
+        mb_skip "rustup is not available, cannot manage extra targets"
+        return 0
+    fi
+
+    # The release workflow builds Apple Silicon binaries, see
+    # .github/workflows/release.yml.
+    local target="aarch64-apple-darwin"
+    if rustup target list --installed 2>/dev/null | grep -qx "${target}"; then
+        mb_ok "rust target ${target} is installed"
+        return 0
+    fi
+
+    if mb_dry_run; then
+        mb_skip "would add the rust target ${target}"
+        return 0
+    fi
+
+    mb_step "adding the rust target ${target}"
+    rustup target add "${target}"
+    mb_ok "rust target ${target} installed"
+}
+
+# ---------------------------------------------------------------------------
+# Optional components
+# ---------------------------------------------------------------------------
+
+check_docker() {
+    if mb_have_cmd docker; then
+        mb_ok "docker is already installed"
+        return 0
+    fi
+
+    mb_skip "docker (install Docker Desktop from https://docs.docker.com/desktop/install/mac-install/)"
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+main() {
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        mb_error "do not run the macOS bootstrap as root, Homebrew refuses to run as root"
+        return 1
+    fi
+
+    if ! BREW="$(find_brew)"; then
+        mb_error "Homebrew was not found, install it first:"
+        mb_error "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        mb_error "then re-run ./scripts/bootstrap"
+        return 1
+    fi
+    mb_info "homebrew: ${BREW}"
+
+    if mb_check_only; then
+        local status=0
+        mb_verify_environment || status=$?
+        return "${status}"
+    fi
+
+    ensure_xcode
+    brew_install protobuf "${BREW}"
+    brew_install git-lfs "${BREW}"
+
+    mb_ensure_rust
+    ensure_rust_targets
+    mb_ensure_cargo_audit
+    check_docker
+
+    local status=0
+    mb_verify_environment || status=$?
+    if ((status != 0)) && ! mb_dry_run; then
+        # A dry run reports the problems it found but does not fail: it only
+        # shows what would happen.
+        return "${status}"
+    fi
+    return 0
+}
+
+main "$@"

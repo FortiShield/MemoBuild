@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# Script to install Rust for CI and local development.
+#
+# This script should be platform-agnostic (eg. no unix-only references like
+# /dev/null).
+
+set -eo pipefail
+
+# Define some control sequences for text formatting.
+red="\033[0;31m"
+reset="\033[0m"
+
+# rustup arguments. The default profile is used so that rustfmt and clippy are
+# available, the project needs both.
+RUSTUP_ARGS=(--default-toolchain stable --profile default)
+
+# Accept the defaults instead of prompting when there is nobody around to
+# answer the questions: CI, containers and unattended runs.
+if [ "${GITHUB_ACTIONS:-}" = "true" ] || [ ! -t 0 ] || [ "${MEMOBUILD_SKIP_SUDO_PROMPT:-0}" = "1" ]; then
+  RUSTUP_ARGS=(-y "${RUSTUP_ARGS[@]}")
+fi
+
+# Install Rust.
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "⬇️  Installing rust..."
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- "${RUSTUP_ARGS[@]}"
+  CARGO_ENV_FILE="$HOME/.cargo/env"
+  if [[ -f "$CARGO_ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CARGO_ENV_FILE"
+  else
+    echo -e "⚠️  ${red}Please start a new terminal session so that cargo is in your PATH.${reset}"
+    exit 1
+  fi
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo -e "⚠️  ${red}cargo is still not on PATH. Start a new terminal session and try again.${reset}"
+  exit 1
+fi

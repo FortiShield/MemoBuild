@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+# Script to run presubmit checks. Devs can run this script locally before sending out PRs for review to ensure
+# CI is passing for their PR.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+FMT_COMMAND="./scripts/format"
+echo "Running ${FMT_COMMAND}..."
+if ! "${FMT_COMMAND}" --check; then
+    echo "Run \`${FMT_COMMAND}\` to fix."
+    exit 1
+fi
+
+# The shell scripts in this repository are checked by the same ShellCheck run
+# that the CI pipeline performs. This runs before clippy because it is by far
+# the cheapest check.
+LINT_COMMAND="./scripts/lint_shellcheck"
+echo "Running ${LINT_COMMAND}..."
+if ! "${LINT_COMMAND}"; then
+    echo "ShellCheck reported findings, fix them before sending the PR."
+    exit 1
+fi
+echo "shellcheck succeeded..."
+
+echo "Running clippy..."
+# TODO(vorporeal): Re-enable the `all-features` flag once we've fixed things.
+cargo clippy --workspace --all-targets --tests -- -D warnings
+echo "clippy succeeded..."
+
+echo "All presubmit checks passed."
