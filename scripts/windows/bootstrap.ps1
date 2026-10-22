@@ -209,7 +209,11 @@ function Ensure-GitLfs {
     }
 
     if ($DryRun) { return }
-    & git lfs install --local | Out-Null
+    & git -C $RepoRoot lfs install --local | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "git lfs install --local failed"
+        return
+    }
     Write-Ok "git-lfs installed"
 }
 
