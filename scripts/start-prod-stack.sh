@@ -73,7 +73,7 @@ done
 echo "🏗️  Checking MemoBuild nodes..."
 for i in {1..3}; do
     node="memobuild-node$i"
-    until docker exec $node memobuild health; do
+    until docker exec "$node" memobuild health; do
         echo "Waiting for $node..."
         sleep 5
     done
