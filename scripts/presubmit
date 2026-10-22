@@ -18,7 +18,7 @@ fi
 # the cheapest check.
 LINT_COMMAND="./scripts/lint_shellcheck"
 echo "Running ${LINT_COMMAND}..."
-if ! "${LINT_COMMAND}"; then
+if ! "${LINT_COMMAND}" --ci; then
     echo "ShellCheck reported findings, fix them before sending the PR."
     exit 1
 fi
