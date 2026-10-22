@@ -65,6 +65,24 @@ memobuild build .
 
 ---
 
+## 🛠️ Development Setup
+
+```bash
+git clone https://github.com/nrelab/MemoBuild.git
+cd MemoBuild
+./scripts/bootstrap
+```
+
+The bootstrap script installs the toolchain MemoBuild needs (Rust, a C
+toolchain, `protoc`, `cargo-audit`), works on Linux, macOS and Windows, and is
+idempotent. Use `./scripts/bootstrap --check` to verify a machine without
+changing anything.
+
+See **[docs/DEVELOPMENT_SETUP.md](./docs/DEVELOPMENT_SETUP.md)** for the full
+list of options, platform notes and troubleshooting.
+
+---
+
 ## 📂 Examples
 
 Visit the [examples/](./examples) directory to see ready-to-use projects:
