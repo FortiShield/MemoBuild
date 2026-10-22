@@ -367,11 +367,20 @@ function Ensure-CargoAudit {
         return
     }
 
+    if (-not (Test-Command 'cargo')) {
+        Write-Warn 'cargo is missing, skipping the cargo-audit setup'
+        return
+    }
+
     Write-Step 'installing cargo-audit (this compiles from source and takes a few minutes)'
     & cargo install cargo-audit --locked | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "cargo install cargo-audit --locked failed, retrying without --locked"
         & cargo install cargo-audit | Out-Host
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn 'cargo-audit could not be installed'
+        return
     }
     Write-Ok 'cargo-audit installed'
 }
