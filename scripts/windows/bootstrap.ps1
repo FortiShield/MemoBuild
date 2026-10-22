@@ -472,7 +472,7 @@ function Test-Environment {
 # ---------------------------------------------------------------------------
 
 function Invoke-Main {
-    if (-not (Test-Command 'winget') -and -not (Test-Command 'choco')) {
+    if (-not $Check -and -not (Test-Command 'winget') -and -not (Test-Command 'choco')) {
         Write-Err 'neither winget nor chocolatey was found, install one of them first'
         return 1
     }
