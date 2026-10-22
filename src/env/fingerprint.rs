@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::process::Command;
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnvFingerprint {

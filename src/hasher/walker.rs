@@ -1,6 +1,8 @@
-use crate::hasher::ignore::IgnoreRules;
 use std::path::{Path, PathBuf};
+
 use walkdir::WalkDir;
+
+use crate::hasher::ignore::IgnoreRules;
 
 /// Walk a directory and return all non-ignored files.
 /// Fix 1 — Deterministic sort: sorted by absolute path before returning.
@@ -31,9 +33,11 @@ pub fn walk_dir(root: &Path, ignore: &IgnoreRules) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     fn make_temp_tree() -> TempDir {
         let dir = TempDir::new().unwrap();

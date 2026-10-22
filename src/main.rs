@@ -1,11 +1,10 @@
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
-use memobuild::server;
-use memobuild::{cache, core, docker, executor, export, logging};
-use std::env;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{env, fs};
+
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use memobuild::{cache, core, docker, executor, export, logging, server};
 
 #[derive(Parser)]
 #[command(name = "memobuild")]

@@ -1,8 +1,13 @@
-use crate::remote_exec::{worker::WorkerNode, ActionRequest, ActionResult};
-use anyhow::Result;
-use axum::{http::StatusCode, routing::post, Extension, Json, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+use anyhow::Result;
+use axum::http::StatusCode;
+use axum::routing::post;
+use axum::{Extension, Json, Router};
+
+use crate::remote_exec::worker::WorkerNode;
+use crate::remote_exec::{ActionRequest, ActionResult};
 
 pub struct WorkerServer {
     worker: Arc<WorkerNode>,

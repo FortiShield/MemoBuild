@@ -1,8 +1,9 @@
-use crate::dashboard::BuildEvent;
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+use crate::dashboard::BuildEvent;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteCacheEntry {
@@ -55,11 +56,12 @@ impl HttpRemoteCache {
     }
 }
 
+use std::io::{Read, Write};
+use std::time::Duration;
+
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::io::{Read, Write};
-use std::time::Duration;
 
 /// Helper for retrying operations with exponential backoff
 async fn retry_with_backoff<F, Fut, T>(

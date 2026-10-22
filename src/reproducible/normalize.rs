@@ -1,7 +1,8 @@
+use std::io::Read;
+
 use anyhow::Result;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::io::Read;
 use tar::{Archive, Builder, Header};
 
 pub fn create_reproducible_tar<R: Read>(source: R) -> Result<Vec<u8>> {

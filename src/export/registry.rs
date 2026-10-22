@@ -1,9 +1,10 @@
-use crate::export::manifest::OCIManifest;
+use std::fs;
+use std::path::Path;
+
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 
-use std::fs;
-use std::path::Path;
+use crate::export::manifest::OCIManifest;
 
 pub struct RegistryClient {
     client: Client,

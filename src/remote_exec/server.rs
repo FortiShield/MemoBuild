@@ -1,8 +1,13 @@
-use crate::remote_exec::{scheduler::Scheduler, ActionRequest, ActionResult};
-use anyhow::Result;
-use axum::{http::StatusCode, routing::post, Extension, Json, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+use anyhow::Result;
+use axum::http::StatusCode;
+use axum::routing::post;
+use axum::{Extension, Json, Router};
+
+use crate::remote_exec::scheduler::Scheduler;
+use crate::remote_exec::{ActionRequest, ActionResult};
 
 pub struct ExecutionServer {
     scheduler: Arc<Scheduler>,

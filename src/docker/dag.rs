@@ -1,7 +1,8 @@
-use crate::docker::parser::Instruction;
-use crate::graph::{BuildGraph, Node, NodeMetadata};
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+use crate::docker::parser::Instruction;
+use crate::graph::{BuildGraph, Node, NodeMetadata};
 
 /// Convert a flat list of Dockerfile instructions into a dependency graph.
 /// Supports DAG construction with conditional branching and smart dependency tracking.

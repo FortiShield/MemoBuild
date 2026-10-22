@@ -45,8 +45,9 @@ mod cache_tests {
 /// Tests for hasher module
 #[cfg(test)]
 mod hasher_tests {
-    use memobuild::hasher::{hash_path, IgnoreRules};
     use std::path::Path;
+
+    use memobuild::hasher::{hash_path, IgnoreRules};
     use tempfile::tempdir;
 
     #[test]

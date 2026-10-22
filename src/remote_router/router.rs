@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+
 use crate::dashboard::BuildEvent;
 use crate::remote_router::region::RegionNode;
-use anyhow::Result;
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoutingStrategy {

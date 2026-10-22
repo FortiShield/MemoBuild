@@ -1,6 +1,6 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-
 use std::fs;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use tempfile::tempdir;
 
 fn bench_hashing(c: &mut Criterion) {

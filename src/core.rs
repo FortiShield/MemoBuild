@@ -1,7 +1,9 @@
+use std::path::Path;
+
+use blake3::Hasher;
+
 use crate::graph::BuildGraph;
 use crate::hasher::{self, IgnoreRules};
-use blake3::Hasher;
-use std::path::Path;
 
 /// Hash a string using BLAKE3 (used for non-filesystem nodes)
 pub fn hash_str(input: &str) -> String {

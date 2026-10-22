@@ -1,8 +1,9 @@
 /// Comprehensive scalability tests for MemoBuild
 #[cfg(test)]
 mod scalability_tests {
-    use memobuild::loadtest::*;
     use std::sync::Arc;
+
+    use memobuild::loadtest::*;
 
     /// Simple cache operation scenario
     struct SimpleCacheScenario {
@@ -227,8 +228,9 @@ mod scalability_tests {
 /// Exhaustive scalability benchmarks
 #[cfg(test)]
 mod scalability_benchmarks {
-    use memobuild::loadtest::*;
     use std::sync::Arc;
+
+    use memobuild::loadtest::*;
 
     struct SimpleCacheScenario {
         hit_probability: f64,

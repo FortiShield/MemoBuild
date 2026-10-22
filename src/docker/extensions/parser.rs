@@ -1,5 +1,6 @@
-use crate::graph::NodeKind;
 use std::path::PathBuf;
+
+use crate::graph::NodeKind;
 
 /// Parses extended Dockerfile instructions into NodeKind variants.
 ///

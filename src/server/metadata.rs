@@ -1,7 +1,8 @@
-use anyhow::Result;
-use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
+
+use anyhow::Result;
+use rusqlite::{params, Connection};
 
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
@@ -371,8 +372,9 @@ pub struct LayerStats {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_metadata_store() {

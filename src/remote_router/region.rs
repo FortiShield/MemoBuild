@@ -1,7 +1,9 @@
-use crate::remote_cache::RemoteCache;
 use std::sync::Arc;
 use std::time::Instant;
+
 use tokio::sync::RwLock;
+
+use crate::remote_cache::RemoteCache;
 
 #[derive(Debug, Clone)]
 pub struct HealthStatus {

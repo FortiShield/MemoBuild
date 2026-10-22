@@ -1,24 +1,21 @@
-use crate::server::metadata::MetadataStore;
-use crate::server::storage::{ArtifactStorage, LocalStorage};
-use anyhow::Result;
-use axum::{
-    body::Bytes,
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, Query, State,
-    },
-    http::{Request, StatusCode},
-    middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
-    routing::{get, head, post, put},
-    Json, Router,
-};
-use serde::Deserialize;
-use serde::Serialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use anyhow::Result;
+use axum::body::Bytes;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path, Query, State};
+use axum::http::{Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{get, head, post, put};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
+use crate::server::metadata::MetadataStore;
+use crate::server::storage::{ArtifactStorage, LocalStorage};
 
 pub mod metadata;
 pub mod storage;

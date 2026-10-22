@@ -1,4 +1,5 @@
 use std::io;
+
 /// Structured logging and observability utilities for MemoBuild
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},

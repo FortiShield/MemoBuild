@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
 
 pub trait ArtifactStorage: Send + Sync {
     fn put(&self, hash: &str, data: &[u8]) -> Result<String>;
@@ -79,8 +80,9 @@ impl ArtifactStorage for LocalStorage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn test_local_storage() {

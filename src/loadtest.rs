@@ -5,6 +5,7 @@ use std::sync::{
     Arc,
 };
 use std::time::{Duration, Instant};
+
 use tokio::task::JoinHandle;
 
 /// Performance metrics collected during load test
