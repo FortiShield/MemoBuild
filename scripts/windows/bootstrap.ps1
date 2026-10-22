@@ -235,7 +235,10 @@ function Ensure-Rust {
             $minVersion = '1.75.0'
             if (-not $compare-versions $rustcVersion $minVersion) {
                 Write-Warn "rustc $rustcVersion is older than the required $minVersion, upgrading..."
-                if (-not (Install-Winget -Id 'Rustlang.Rustup' -Name 'Rustup' -ErrorAction SilentlyContinue)) {
+                if (Test-Command 'rustup') {
+                    if ($DryRun) { Write-Skip 'would run: rustup update stable' }
+                    else { & rustup update stable | Out-Host; & rustup default stable | Out-Host }
+                } elseif (-not (Install-Winget -Id 'Rustlang.Rustup' -Name 'Rustup')) {
                     $installer = Join-Path $env:TEMP 'rustup-init.exe'
                     if ($DryRun) {
                         Write-Skip 'would download https://win.rustup.rs/x86_64 and run rustup-init.exe'
