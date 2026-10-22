@@ -102,8 +102,27 @@ test_unknown_argument() {
 }
 
 test_dry_run_is_side_effect_free() {
+    # Record whether git-lfs is available before the dry run.
+    before_git_lfs_available=0
+    if command -v git-lfs >/dev/null 2>&1; then
+        before_git_lfs_available=1
+    fi
+
     if expect_exit 0 env MEMOBUILD_DRY_RUN=1 "${BOOTSTRAP}" --dry-run; then
-        pass "--dry-run completes without errors"
+        # After dry-run, git-lfs should still be available only if it was before.
+        if command -v git-lfs >/dev/null 2>&1; then
+            if [[ "${before_git_lfs_available}" -eq 1 ]]; then
+                pass "--dry-run is side-effect free (git-lfs still available)"
+            else
+                fail "--dry-run left git-lfs installed (was not before)"
+            fi
+        else
+            if [[ "${before_git_lfs_available}" -eq 0 ]]; then
+                pass "--dry-run is side-effect free (git-lfs still unavailable)"
+            else
+                fail "--dry-run removed git-lfs (was available before)"
+            fi
+        fi
     else
         fail "--dry-run completes without errors"
     fi
@@ -129,8 +148,26 @@ test_platform_bootstrap_runs_standalone() {
 
     # The platform bootstrap has to work on its own too, not only through the
     # wrapper in scripts/bootstrap.
+    # Verify dry-run is side-effect free by checking git-lfs availability.
+    before_git_lfs_available=0
+    if command -v git-lfs >/dev/null 2>&1; then
+        before_git_lfs_available=1
+    fi
+
     if expect_exit 0 "${PLATFORM_BOOTSTRAP}" --dry-run; then
-        pass "the platform bootstrap runs standalone in dry-run mode"
+        if command -v git-lfs >/dev/null 2>&1; then
+            if [[ "${before_git_lfs_available}" -eq 1 ]]; then
+                pass "the platform bootstrap runs standalone in dry-run mode (git-lfs still available)"
+            else
+                fail "the platform bootstrap left git-lfs installed (was not before)"
+            fi
+        else
+            if [[ "${before_git_lfs_available}" -eq 0 ]]; then
+                pass "the platform bootstrap runs standalone in dry-run mode (git-lfs still unavailable)"
+            else
+                fail "the platform bootstrap removed git-lfs (was available before)"
+            fi
+        fi
     else
         fail "the platform bootstrap runs standalone in dry-run mode"
     fi

@@ -91,8 +91,8 @@ module.exports = async ({ github, context }) => {
         repository(owner: $owner, name: $repo) {
           pullRequest(number: $number) {
             commits(last: 1) { nodes { commit { pushedDate committedDate } } }
-            timelineItems(last: 50, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT]) {
-              nodes { ... on HeadRefForcePushedEvent { createdAt } }
+            timelineItems(last: 50, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, PR_REOPENED]) {
+              nodes { ... on HeadRefForcePushedEvent { createdAt } ... on PullRequestReopenedEvent { createdAt } }
             }
           }
         }

@@ -21,9 +21,47 @@ if [ "${GITHUB_ACTIONS:-}" = "true" ] || [ ! -t 0 ] || [ "${MEMOBUILD_SKIP_SUDO_
   RUSTUP_ARGS=(-y "${RUSTUP_ARGS[@]}")
 fi
 
-# Install Rust.
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "⬇️  Installing rust..."
+# Minimum rustc version the toolchain must satisfy. Kept in sync with
+# MEMOBUILD_MIN_RUST_VERSION in scripts/lib/common.sh.
+MIN_RUST="${MEMOBUILD_MIN_RUST_VERSION:-1.75.0}"
+
+# Compare two dotted numeric versions. Returns 0 when $1 >= $2.
+version_ge() {
+  local have="$1"
+  local want="$2"
+  local -a h=() w=()
+  local i hv wv
+  IFS='.' read -r -a h <<<"$have"
+  IFS='.' read -r -a w <<<"$want"
+  for ((i = 0; i < ${#w[@]}; i++)); do
+    hv="${h[i]:-0}"
+    wv="${w[i]:-0}"
+    hv="${hv%%[^0-9]*}"
+    wv="${wv%%[^0-9]*}"
+    hv="${hv:-0}"
+    wv="${wv:-0}"
+    if ((10#$hv > 10#$wv)); then
+      return 0
+    fi
+    if ((10#$hv < 10#$wv)); then
+      return 1
+    fi
+  done
+  return 0
+}
+
+rustc_version() {
+  rustc --version 2>/dev/null | awk '{print $2}'
+}
+
+rustc_ok() {
+  command -v rustc >/dev/null 2>&1 || return 1
+  local version
+  version="$(rustc_version)"
+  [ -n "$version" ] && version_ge "$version" "$MIN_RUST"
+}
+
+install_toolchain() {
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- "${RUSTUP_ARGS[@]}"
   CARGO_ENV_FILE="$HOME/.cargo/env"
   if [[ -f "$CARGO_ENV_FILE" ]]; then
@@ -32,6 +70,24 @@ if ! command -v cargo >/dev/null 2>&1; then
   else
     echo -e "⚠️  ${red}Please start a new terminal session so that cargo is in your PATH.${reset}"
     exit 1
+  fi
+}
+
+# Install Rust, or upgrade an existing toolchain that is too old: a cargo that
+# predates the required rustc version would otherwise fail the version check
+# later in the bootstrap.
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "⬇️  Installing rust..."
+  install_toolchain
+elif ! rustc_ok; then
+  echo "⬇️  Upgrading rust (found $(rustc_version), need >= ${MIN_RUST})..."
+  if command -v rustup >/dev/null 2>&1; then
+    rustup update stable
+    rustup default stable
+  else
+    # cargo without rustup (eg. a distro toolchain): rustup-init installs a
+    # rustup-managed stable alongside it and takes over the default.
+    install_toolchain
   fi
 fi
 

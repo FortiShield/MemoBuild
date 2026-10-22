@@ -259,6 +259,12 @@ main() {
 
     local -a packages=()
     mapfile -t packages < <(packages_for "${manager}")
+
+    # Skip Git LFS when --no-lfs was passed through the bootstrap chain.
+    if [[ "${SKIP_LFS:-0}" != "1" ]]; then
+        mapfile -t packages < <(printf '%s\n' "${packages[@]}" | grep -v '^git-lfs$' || true)
+    fi
+
     install_packages "${manager}" "${packages[@]}"
 
     mb_ensure_rust

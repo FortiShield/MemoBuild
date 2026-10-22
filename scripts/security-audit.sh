@@ -94,7 +94,7 @@ echo ""
 
 # 6. Run security-related tests
 echo "✅ Running security tests..."
-if cargo test --test error_handling_test -- --nocapture 2>&1; then
+if cargo test --test reproducibility_test -- --nocapture 2>&1; then
     echo "✅ Security tests passed"
 else
     echo "❌ Security tests failed"

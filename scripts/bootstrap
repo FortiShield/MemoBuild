@@ -125,6 +125,12 @@ if ((SKIP_LFS == 0)); then
     mb_ensure_git_lfs || exit 1
 fi
 
+# Pass the --no-lfs flag through to the platform bootstrap so it can
+# also skip Git LFS installation when requested.
+if ((SKIP_LFS == 1)); then
+    PLATFORM_ARGS+=("--no-lfs")
+fi
+
 case "${PLATFORM}" in
     macos)
         mb_title "MemoBuild bootstrap (macOS)"

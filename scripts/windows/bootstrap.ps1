@@ -33,6 +33,22 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+# Map GNU-style flags to PowerShell switches for direct script invocation.
+# When invoked via scripts/bootstrap the args are already mapped, but when
+# running the platform script directly we accept both styles.
+$Argv = $MyInvocation.BoundParameters.Keys
+foreach ($key in $Argv) {
+    $val = $MyInvocation.BoundParameters[$key]
+    # Normalize bound parameter keys (strip leading dashes) so we can match
+    # both GNU-style flags (--dry-run) and PowerShell's internal names (DryRun).
+    $normalizedKey = $key -replace '^-+'
+    if ($normalizedKey -match 'dry-run' -or $normalizedKey -eq 'DryRun') { $DryRun = $true }
+    if ($normalizedKey -match 'check' -or $normalizedKey -eq 'Check') { $Check = $true }
+    if ($normalizedKey -match 'no-lfs' -or $normalizedKey -eq 'NoLfs') { $NoLfs = $true }
+    if ($normalizedKey -match 'y' -or $normalizedKey -eq 'Yes') { $Yes = $true }
+}
+}
+
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $env:MEMOBUILD_REPO_ROOT = $RepoRoot
 
@@ -198,9 +214,51 @@ function Ensure-GitLfs {
 }
 
 function Ensure-Rust {
+    function $compare-versions($a, $b) {
+        # Compare two dotted numeric versions. Returns $true if $a >= $b.
+        $partsA = $a -split '\.'
+        $partsB = $b -split '\.'
+        for ($i = 0; $i -max 3; $i++) {
+            $va = $partsA[$i] -replace '[^0-9]', '0'
+            $vb = $partsB[$i] -replace '[^0-9]', '0'
+            if ($va -gt $vb) { return $true }
+            if ($va -lt $vb) { return $false }
+        }
+        return $true
+    }
+
     if (Test-Command 'cargo') {
-        Write-Ok "cargo is already installed"
+        $rustcOutput = & rustc --version 2>$null
+        if ($rustcOutput) {
+            $rustcVersion = $rustcOutput -replace 'rustc\s+', ''
+            # Minimum acceptable rustc version (1.75.0)
+            $minVersion = '1.75.0'
+            if (-not $compare-versions $rustcVersion $minVersion) {
+                Write-Warn "rustc $rustcVersion is older than the required $minVersion, upgrading..."
+                if (-not (Install-Winget -Id 'Rustlang.Rustup' -Name 'Rustup' -ErrorAction SilentlyContinue)) {
+                    $installer = Join-Path $env:TEMP 'rustup-init.exe'
+                    if ($DryRun) {
+                        Write-Skip 'would download https://win.rustup.rs/x86_64 and run rustup-init.exe'
+                    } else {
+                        Invoke-WebRequest -Uri 'https://win.rustup.rs/x86_64' -OutFile $installer -UseBasicParsing
+                        & $installer -y --profile default --default-toolchain stable | Out-Host
+                    }
+                }
+                $rustupInit = Get-Command 'rustup-init.exe' -ErrorAction SilentlyContinue
+                if ($rustupInit -and -not $DryRun) {
+                    & $rustupInit.Source -y --profile default --default-toolchain stable | Out-Host
+                }
+            }
+        }
         Add-ToUserPath "$env:USERPROFILE\.cargo\bin"
+
+        if (-not (Test-Command 'cargo')) {
+            if (-not $DryRun) {
+                Write-Warn "cargo is still missing, install Rust from https://rustup.rs and re-run the bootstrap"
+            }
+            return
+        }
+        Write-Ok "rustc $(& rustc --version)"
         return
     }
 
@@ -231,6 +289,23 @@ function Ensure-Rust {
     Write-Ok "rustc $(& rustc --version)"
 }
 
+# The protoc release archive that Ensure-Protoc installs. The release metadata
+# and the asset URL are mutable, so both the version and the archive digest are
+# pinned here, in the repo, where they are reviewed: the digest is what
+# authenticates the download, and nothing is extracted - let alone executed -
+# until the bytes match it. A mismatch aborts the bootstrap.
+#
+# Regenerate when bumping $ProtocVersion:
+#
+#   curl -sSf https://api.github.com/repos/protocolbuffers/protobuf/releases/tags/v<version> \
+#     | jq -r '.assets[] | select(.name == "protoc-<version>-win64.zip") | .digest'
+#
+# and cross-check the value against an independent channel that re-hashes the
+# asset, eg. the InstallerSha256 of Google.Protobuf in microsoft/winget-pkgs.
+$ProtocVersion = '36.2'
+$ProtocArchive = "protoc-$ProtocVersion-win64.zip"
+$ProtocSha256 = 'f0c128dc0d8492eceece83bb459a4c0e316764b929ffbf1aa416357fd644edd3'
+
 function Ensure-Protoc {
     if (Test-Command 'protoc') {
         Write-Ok "protoc is already installed"
@@ -244,31 +319,36 @@ function Ensure-Protoc {
         return
     }
 
-    # Fall back to the official release archive.
+    # Fall back to the pinned official release archive.
     $toolsDir = Join-Path $env:LOCALAPPDATA 'MemoBuild\tools'
     $protocDir = Join-Path $toolsDir 'protoc'
 
     if ($DryRun) {
-        Write-Skip "would download the latest protoc release into $protocDir"
+        Write-Skip "would download protoc v$ProtocVersion into $protocDir"
         return
     }
 
-    Write-Step 'downloading the latest protoc release'
+    Write-Step "downloading protoc v$ProtocVersion"
     New-Item -ItemType Directory -Force -Path $protocDir | Out-Null
 
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/protocolbuffers/protobuf/releases/latest' -UseBasicParsing
-    $asset = $release.assets | Where-Object { $_.name -match 'win64\.zip$' } | Select-Object -First 1
-    if ($null -eq $asset) {
-        Write-Warn 'could not find a Windows protoc archive in the latest release'
-        return
+    $archive = Join-Path $env:TEMP $ProtocArchive
+    $url = "https://github.com/protocolbuffers/protobuf/releases/download/v$ProtocVersion/$ProtocArchive"
+    Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+
+    $actualSha256 = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualSha256 -ne $ProtocSha256) {
+        Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
+        Write-Err "$ProtocArchive failed verification, refusing to extract or run it"
+        Write-Err "  expected SHA-256 $ProtocSha256"
+        Write-Err "  actual SHA-256   $actualSha256"
+        throw "$ProtocArchive failed SHA-256 verification"
     }
 
-    $archive = Join-Path $env:TEMP $asset.name
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive -UseBasicParsing
     Expand-Archive -Path $archive -DestinationPath $protocDir -Force
+    Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
 
     Add-ToUserPath $protocDir
-    Write-Ok "protoc installed in $protocDir"
+    Write-Ok "protoc v$ProtocVersion installed in $protocDir"
 }
 
 function Ensure-CargoAudit {
@@ -334,6 +414,7 @@ function Test-Environment {
         Write-Ok 'c compiler      available'
     } else {
         Write-Warn 'c compiler      missing (install the Visual Studio Build Tools)'
+        $failures++
     }
 
     if (Test-Command 'protoc') {

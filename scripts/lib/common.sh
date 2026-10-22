@@ -121,6 +121,9 @@ mb_parse_bootstrap_args() {
                 mb_bootstrap_usage
                 exit 0
                 ;;
+            --no-lfs)
+                export SKIP_LFS=1
+                ;;
             *)
                 mb_error "unknown argument $1"
                 return 64
@@ -296,7 +299,10 @@ mb_ensure_rust() {
         return 1
     fi
 
-    bash "${installer}"
+    if ! bash "${installer}"; then
+        mb_error "scripts/install_rust failed"
+        return 1
+    fi
 
     # install_rust runs in its own shell, so the environment it set up has to
     # be imported here as well.

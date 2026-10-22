@@ -170,7 +170,9 @@ main() {
 
     ensure_xcode
     brew_install protobuf "${BREW}"
-    brew_install git-lfs "${BREW}"
+    if [[ "${SKIP_LFS:-0}" != "1" ]]; then
+        brew_install git-lfs "${BREW}"
+    fi
 
     mb_ensure_rust
     ensure_rust_targets
