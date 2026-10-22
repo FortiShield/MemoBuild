@@ -35,6 +35,8 @@ impl RegistryClient {
 
     /// Push an OCI layout directory to the registry
     pub fn push(&self, layout_dir: &Path) -> Result<()> {
+        let _span = crate::oci_span!("push", &self.base_url, 0); // layer_count will be updated
+
         println!("🚀 Pushing image to {}/{}...", self.base_url, self.repo);
 
         // 1. Read index.json to find the manifest

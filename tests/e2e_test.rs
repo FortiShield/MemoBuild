@@ -186,7 +186,7 @@ async fn test_end_to_end_build_with_remote_cache() {
     let port = 9991;
     let server_path_clone = server_path.clone();
     tokio::spawn(async move {
-        server::start_server(port, server_path_clone, None)
+        server::start_server(port, server_path_clone, None, None, None, None)
             .await
             .ok();
     });

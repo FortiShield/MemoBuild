@@ -38,21 +38,52 @@ pub trait RemoteCache: Send + Sync {
 pub struct HttpRemoteCache {
     base_url: String,
     client: Client,
+    #[allow(dead_code)]
+    auth_token: Option<String>,
 }
 
 impl HttpRemoteCache {
     pub fn new(base_url: String) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "X-MemoBuild-API-Version",
-            reqwest::header::HeaderValue::from_static("1.0"),
-        );
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        Self::with_auth(base_url, None)
+    }
 
-        Self { base_url, client }
+    pub fn with_auth(base_url: String, auth_token: Option<String>) -> Self {
+        Self::with_tls_and_auth(base_url, None, auth_token)
+    }
+
+    pub fn with_tls_config(base_url: String, tls_config: Option<&crate::tls::TlsConfig>) -> Self {
+        Self::with_tls_and_auth(base_url, tls_config, None)
+    }
+
+    pub fn with_tls_and_auth(
+        base_url: String,
+        tls_config: Option<&crate::tls::TlsConfig>,
+        auth_token: Option<String>,
+    ) -> Self {
+        let mut builder = Client::builder().default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "X-MemoBuild-API-Version",
+                reqwest::header::HeaderValue::from_static("1.0"),
+            );
+            if let Some(ref token) = auth_token {
+                headers.insert(
+                    "Authorization",
+                    reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+                );
+            }
+            headers
+        });
+
+        if let Some(tls) = tls_config {
+            if let Ok(client_config) = tls.client_config() {
+                builder = builder.use_rustls_tls().use_preconfigured_tls(client_config);
+            }
+        }
+
+        let client = builder.build().unwrap_or_else(|_| Client::new());
+
+        Self { base_url, client, auth_token }
     }
 }
 

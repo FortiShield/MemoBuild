@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 3. Initialize Scheduler with Data Locality
-    let shared_scheduler = Arc::new(Scheduler::new(workers, SchedulingStrategy::DataLocality));
+    let shared_scheduler = Arc::new(Scheduler::new(SchedulingStrategy::DataLocality));
     println!("   🚀 Scheduler running with DataLocality strategy\n");
 
     // 4. Dispatch tasks with some shared hashes to test Data Locality
