@@ -102,26 +102,36 @@ test_unknown_argument() {
 }
 
 test_dry_run_is_side_effect_free() {
-    # Record whether git-lfs is available before the dry run.
-    before_git_lfs_available=0
-    if command -v git-lfs >/dev/null 2>&1; then
-        before_git_lfs_available=1
+    # Record git LFS config before the dry run to detect side effects.
+    # git lfs install --local or git lfs pull may change .git/config without
+    # making git-lfs unavailable, so we track the [filter "lfs"] section.
+    before_lfs_config=0
+    if grep -q 'filter.lfs' "${REPO_ROOT}/.git/config" 2>/dev/null; then
+        before_lfs_config=1
+        before_lfs_text=$(grep '^[[:space:]]*filter.lfs' -A 10 "${REPO_ROOT}/.git/config" 2>/dev/null || true)
     fi
 
     if expect_exit 0 env MEMOBUILD_DRY_RUN=1 "${BOOTSTRAP}" --dry-run; then
-        # After dry-run, git-lfs should still be available only if it was before.
-        if command -v git-lfs >/dev/null 2>&1; then
-            if [[ "${before_git_lfs_available}" -eq 1 ]]; then
-                pass "--dry-run is side-effect free (git-lfs still available)"
+        # After dry-run, check if git LFS config changed.
+        after_lfs_config=0
+        if grep -q 'filter.lfs' "${REPO_ROOT}/.git/config" 2>/dev/null; then
+            after_lfs_config=1
+            after_lfs_text=$(grep '^[[:space:]]*filter.lfs' -A 10 "${REPO_ROOT}/.git/config" 2>/dev/null || true)
+        fi
+
+        if [[ "${before_lfs_config}" -eq "${after_lfs_config}" ]]; then
+            if [[ "${before_lfs_config}" -eq 1 ]]; then
+                # Both before and after had LFS config; compare the actual text
+                if [[ "${before_lfs_text}" == "${after_lfs_text}" ]]; then
+                    pass "--dry-run is side-effect free (LFS config unchanged)"
+                else
+                    fail "--dry-run modified LFS config"
+                fi
             else
-                fail "--dry-run left git-lfs installed (was not before)"
+                pass "--dry-run is side-effect free (no LFS config)"
             fi
         else
-            if [[ "${before_git_lfs_available}" -eq 0 ]]; then
-                pass "--dry-run is side-effect free (git-lfs still unavailable)"
-            else
-                fail "--dry-run removed git-lfs (was available before)"
-            fi
+            fail "--dry-run changed LFS config"
         fi
     else
         fail "--dry-run completes without errors"
@@ -148,25 +158,34 @@ test_platform_bootstrap_runs_standalone() {
 
     # The platform bootstrap has to work on its own too, not only through the
     # wrapper in scripts/bootstrap.
-    # Verify dry-run is side-effect free by checking git-lfs availability.
-    before_git_lfs_available=0
-    if command -v git-lfs >/dev/null 2>&1; then
-        before_git_lfs_available=1
+    # Verify dry-run is side-effect free by checking git LFS config.
+    # git lfs install --local or git lfs pull may change .git/config without
+    # making git-lfs unavailable, so we track the [filter "lfs"] section.
+    before_lfs_config=0
+    if grep -q 'filter.lfs' "${REPO_ROOT}/.git/config" 2>/dev/null; then
+        before_lfs_config=1
+        before_lfs_text=$(grep '^[[:space:]]*filter.lfs' -A 10 "${REPO_ROOT}/.git/config" 2>/dev/null || true)
     fi
 
     if expect_exit 0 "${PLATFORM_BOOTSTRAP}" --dry-run; then
-        if command -v git-lfs >/dev/null 2>&1; then
-            if [[ "${before_git_lfs_available}" -eq 1 ]]; then
-                pass "the platform bootstrap runs standalone in dry-run mode (git-lfs still available)"
+        after_lfs_config=0
+        if grep -q 'filter.lfs' "${REPO_ROOT}/.git/config" 2>/dev/null; then
+            after_lfs_config=1
+            after_lfs_text=$(grep '^[[:space:]]*filter.lfs' -A 10 "${REPO_ROOT}/.git/config" 2>/dev/null || true)
+        fi
+
+        if [[ "${before_lfs_config}" -eq "${after_lfs_config}" ]]; then
+            if [[ "${before_lfs_config}" -eq 1 ]]; then
+                if [[ "${before_lfs_text}" == "${after_lfs_text}" ]]; then
+                    pass "the platform bootstrap runs standalone in dry-run mode (LFS config unchanged)"
+                else
+                    fail "the platform bootstrap modified LFS config"
+                fi
             else
-                fail "the platform bootstrap left git-lfs installed (was not before)"
+                pass "the platform bootstrap runs standalone in dry-run mode (no LFS config)"
             fi
         else
-            if [[ "${before_git_lfs_available}" -eq 0 ]]; then
-                pass "the platform bootstrap runs standalone in dry-run mode (git-lfs still unavailable)"
-            else
-                fail "the platform bootstrap removed git-lfs (was available before)"
-            fi
+            fail "the platform bootstrap changed LFS config"
         fi
     else
         fail "the platform bootstrap runs standalone in dry-run mode"

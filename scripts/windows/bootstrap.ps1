@@ -33,22 +33,6 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-# Map GNU-style flags to PowerShell switches for direct script invocation.
-# When invoked via scripts/bootstrap the args are already mapped, but when
-# running the platform script directly we accept both styles.
-$Argv = $MyInvocation.BoundParameters.Keys
-foreach ($key in $Argv) {
-    $val = $MyInvocation.BoundParameters[$key]
-    # Normalize bound parameter keys (strip leading dashes) so we can match
-    # both GNU-style flags (--dry-run) and PowerShell's internal names (DryRun).
-    $normalizedKey = $key -replace '^-+'
-    if ($normalizedKey -match 'dry-run' -or $normalizedKey -eq 'DryRun') { $DryRun = $true }
-    if ($normalizedKey -match 'check' -or $normalizedKey -eq 'Check') { $Check = $true }
-    if ($normalizedKey -match 'no-lfs' -or $normalizedKey -eq 'NoLfs') { $NoLfs = $true }
-    if ($normalizedKey -match 'y' -or $normalizedKey -eq 'Yes') { $Yes = $true }
-}
-}
-
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $env:MEMOBUILD_REPO_ROOT = $RepoRoot
 
@@ -218,13 +202,13 @@ function Ensure-GitLfs {
 }
 
 function Ensure-Rust {
-    function $compare-versions($a, $b) {
+    function Compare-Versions($a, $b) {
         # Compare two dotted numeric versions. Returns $true if $a >= $b.
         $partsA = $a -split '\.'
         $partsB = $b -split '\.'
-        for ($i = 0; $i -max 3; $i++) {
-            $va = $partsA[$i] -replace '[^0-9]', '0'
-            $vb = $partsB[$i] -replace '[^0-9]', '0'
+        for ($i = 0; $i -lt 3; $i++) {
+            $va = $partsA[$i] -replace '[^0-9]', ''
+            $vb = $partsB[$i] -replace '[^0-9]', ''
             if ($va -gt $vb) { return $true }
             if ($va -lt $vb) { return $false }
         }
@@ -232,12 +216,18 @@ function Ensure-Rust {
     }
 
     if (Test-Command 'cargo') {
+        if (!(Test-Command 'rustc')) {
+            Write-Err 'rustc is required but not found'
+            return
+        }
         $rustcOutput = & rustc --version 2>$null
-        if ($rustcOutput) {
-            $rustcVersion = $rustcOutput -replace 'rustc\s+', ''
-            # Minimum acceptable rustc version (1.75.0)
-            $minVersion = '1.75.0'
-            if (-not $compare-versions $rustcVersion $minVersion) {
+        $rustcVersion = ($rustcOutput -match '^rustc\s+([\d.]+)' | % { $Matches[1] })
+        if (-not $rustcVersion) {
+            Write-Err "Failed to parse rustc version from: $rustcOutput"
+            return
+        }
+        $minVersion = '1.75.0'
+        if (-not $Compare-Versions $rustcVersion $minVersion) {
                 Write-Warn "rustc $rustcVersion is older than the required $minVersion, upgrading..."
                 if (Test-Command 'rustup') {
                     if ($DryRun) { Write-Skip 'would run: rustup update stable' }
