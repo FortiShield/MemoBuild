@@ -165,7 +165,11 @@ case "${PLATFORM}" in
         if ((SKIP_LFS == 1)); then
             WINDOWS_ARGS+=("-NoLfs")
         fi
-        "${POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${PLATFORM_SCRIPT}" ${WINDOWS_ARGS[@]+"${WINDOWS_ARGS[@]}"}
+        WINDOWS_SCRIPT="${PLATFORM_SCRIPT}"
+        if command -v cygpath >/dev/null 2>&1; then
+            WINDOWS_SCRIPT="$(cygpath -w "${PLATFORM_SCRIPT}")"
+        fi
+        "${POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${WINDOWS_SCRIPT}" ${WINDOWS_ARGS[@]+"${WINDOWS_ARGS[@]}"}
         ;;
 esac
 
