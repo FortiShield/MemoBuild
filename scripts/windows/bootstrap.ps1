@@ -457,7 +457,7 @@ function Test-Environment {
         Write-Warn 'docker          missing (optional, needed to build the extension)'
     }
 
-    if (Test-Path (Join-Path $RepoRoot 'Cargo.toml')) {
+    if ((Test-Command 'cargo') -and (Test-Path (Join-Path $RepoRoot 'Cargo.toml'))) {
         Push-Location $RepoRoot
         try {
             # A failing native command does not raise a terminating error in
