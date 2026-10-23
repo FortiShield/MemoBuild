@@ -5,11 +5,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::remote_exec::reapi::{ReapiCacheService, ReapiExecutionService};
 use tonic::transport::Server;
 
 use crate::cache::RemoteCache;
-use crate::remote_exec::reapi::memobuild;
+use crate::remote_exec::reapi::{memobuild, ReapiCacheService, ReapiExecutionService};
 use crate::remote_exec::RemoteExecutor;
 
 pub async fn start_grpc_server(

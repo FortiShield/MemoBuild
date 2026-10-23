@@ -27,10 +27,10 @@ use memobuild::v1::execution_service_server::ExecutionService;
 use memobuild::v1::{
     action_result, execute_response, ActionResult as ProtoActionResult, BatchReadBlobsRequest,
     BatchReadBlobsResponse, BatchUpdateBlobsRequest, BatchUpdateBlobsResponse, Blob, BlobDigest,
-    ExecuteRequest, ExecuteResponse, ExecutionInfo, FindMissingBlobsRequest, FindMissingBlobsResponse,
-    GetActionResultRequest, GetExecutionStreamInfoRequest, GetExecutionStreamInfoResponse,
-    GetTreeRequest, GetTreeResponse, UpdateActionResultRequest, UpdateActionResultResponse,
-    WaitExecutionRequest,
+    ExecuteRequest, ExecuteResponse, ExecutionInfo, FindMissingBlobsRequest,
+    FindMissingBlobsResponse, GetActionResultRequest, GetExecutionStreamInfoRequest,
+    GetExecutionStreamInfoResponse, GetTreeRequest, GetTreeResponse, UpdateActionResultRequest,
+    UpdateActionResultResponse, WaitExecutionRequest,
 };
 
 /// REAPI-compatible Execution Service
@@ -86,7 +86,8 @@ async fn put_cached_action_result(
 #[tonic::async_trait]
 impl ExecutionService for ReapiExecutionService {
     type ExecuteStream = tokio_stream::wrappers::ReceiverStream<Result<ExecuteResponse, Status>>;
-    type WaitExecutionStream = tokio_stream::wrappers::ReceiverStream<Result<ExecuteResponse, Status>>;
+    type WaitExecutionStream =
+        tokio_stream::wrappers::ReceiverStream<Result<ExecuteResponse, Status>>;
 
     async fn execute(
         &self,
@@ -158,7 +159,9 @@ impl ExecutionService for ReapiExecutionService {
                         execute_response::ExecutionMetadata {
                             worker: "worker-1".to_string(),
                             queued_duration_ns: 0,
-                            worker_start_timestamp_ns: Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                            worker_start_timestamp_ns: Utc::now()
+                                .timestamp_nanos_opt()
+                                .unwrap_or(0),
                             worker_completed_timestamp_ns: 0,
                             input_fetch_duration_ns: 0,
                             output_upload_duration_ns: 0,
