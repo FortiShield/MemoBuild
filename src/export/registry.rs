@@ -173,7 +173,7 @@ impl RegistryClient {
     fn upload_blob(&self, digest: &str, path: &Path) -> Result<()> {
         // Check if blob exists first (cross-repo mount or just skip)
         if self.blob_exists(digest)? {
-            println!("   (skip blob: {} already exists)", &status_hash(digest));
+            println!("   (skip blob: {} already exists)", status_hash(digest));
             return Ok(());
         }
 

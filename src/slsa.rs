@@ -161,7 +161,7 @@ pub mod cli {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InvocationParams {
     pub command: Vec<String>,
     pub environment: Vec<EnvironmentVariable>,
@@ -254,14 +254,4 @@ pub struct Attestation {
 pub struct Signature {
     pub keyid: Option<String>,
     pub sig: String,
-}
-
-impl Default for InvocationParams {
-    fn default() -> Self {
-        Self {
-            command: vec![],
-            environment: vec![],
-            inputs: vec![],
-        }
-    }
 }

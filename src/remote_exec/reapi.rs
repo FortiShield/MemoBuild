@@ -25,12 +25,12 @@ pub mod memobuild {
 use memobuild::v1::cache_service_server::CacheService;
 use memobuild::v1::execution_service_server::ExecutionService;
 use memobuild::v1::{
-    action_result, execution_info, ActionResult as ProtoActionResult, BatchReadBlobsRequest,
+    action_result, execute_response, ActionResult as ProtoActionResult, BatchReadBlobsRequest,
     BatchReadBlobsResponse, BatchUpdateBlobsRequest, BatchUpdateBlobsResponse, Blob, BlobDigest,
-    ExecuteRequest, ExecuteResponse, FileNode, FindMissingBlobsRequest, FindMissingBlobsResponse,
-    GetActionResultRequest, GetExecutionStreamInfoRequest, GetExecutionStreamInfoResponse,
-    GetTreeRequest, GetTreeResponse, UpdateActionResultRequest, UpdateActionResultResponse,
-    WaitExecutionRequest,
+    ExecuteRequest, ExecuteResponse, ExecutionInfo, FindMissingBlobsRequest,
+    FindMissingBlobsResponse, GetActionResultRequest, GetExecutionStreamInfoRequest,
+    GetExecutionStreamInfoResponse, GetTreeRequest, GetTreeResponse, UpdateActionResultRequest,
+    UpdateActionResultResponse, WaitExecutionRequest,
 };
 
 /// REAPI-compatible Execution Service
@@ -48,48 +48,46 @@ impl ReapiExecutionService {
             active_executions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
+}
 
-    fn action_result_cache_key(action_digest: &str) -> String {
-        format!("reapi-action-result/{}", action_digest)
+fn action_result_cache_key(action_digest: &str) -> String {
+    format!("reapi-action-result/{}", action_digest)
+}
+
+async fn get_cached_action_result(
+    cache: &Arc<dyn RemoteCache>,
+    action_digest: &str,
+) -> Result<Option<ActionResult>, Status> {
+    match cache.get(&action_result_cache_key(action_digest)).await {
+        Ok(Some(payload)) => serde_json::from_slice::<ActionResult>(&payload)
+            .map(Some)
+            .map_err(|e| {
+                Status::internal(format!("Failed to deserialize cached action result: {}", e))
+            }),
+        Ok(None) => Ok(None),
+        Err(e) => Err(Status::internal(format!("Cache error: {}", e))),
     }
+}
 
-    async fn get_cached_action_result(
-        &self,
-        action_digest: &str,
-    ) -> Result<Option<ActionResult>, Status> {
-        match self
-            .cache
-            .get(&Self::action_result_cache_key(action_digest))
-            .await
-        {
-            Ok(Some(payload)) => serde_json::from_slice::<ActionResult>(&payload)
-                .map(Some)
-                .map_err(|e| {
-                    Status::internal(format!("Failed to deserialize cached action result: {}", e))
-                }),
-            Ok(None) => Ok(None),
-            Err(e) => Err(Status::internal(format!("Cache error: {}", e))),
-        }
-    }
+async fn put_cached_action_result(
+    cache: &Arc<dyn RemoteCache>,
+    action_digest: &str,
+    result: &ActionResult,
+) -> Result<(), Status> {
+    let payload = serde_json::to_vec(result)
+        .map_err(|e| Status::internal(format!("Failed to serialize action result: {}", e)))?;
 
-    async fn put_cached_action_result(
-        &self,
-        action_digest: &str,
-        result: &ActionResult,
-    ) -> Result<(), Status> {
-        let payload = serde_json::to_vec(result)
-            .map_err(|e| Status::internal(format!("Failed to serialize action result: {}", e)))?;
-
-        self.cache
-            .put(&Self::action_result_cache_key(action_digest), &payload)
-            .await
-            .map_err(|e| Status::internal(format!("Cache error: {}", e)))
-    }
+    cache
+        .put(&action_result_cache_key(action_digest), &payload)
+        .await
+        .map_err(|e| Status::internal(format!("Cache error: {}", e)))
 }
 
 #[tonic::async_trait]
 impl ExecutionService for ReapiExecutionService {
     type ExecuteStream = tokio_stream::wrappers::ReceiverStream<Result<ExecuteResponse, Status>>;
+    type WaitExecutionStream =
+        tokio_stream::wrappers::ReceiverStream<Result<ExecuteResponse, Status>>;
 
     async fn execute(
         &self,
@@ -111,7 +109,9 @@ impl ExecutionService for ReapiExecutionService {
         };
 
         // Check cached action result first
-        if let Ok(Some(cached_result)) = self.get_cached_action_result(&action_digest.hash).await {
+        if let Ok(Some(cached_result)) =
+            get_cached_action_result(&self.cache, &action_digest.hash).await
+        {
             let response = ExecuteResponse {
                 output: Some(execute_response::Output::ExitCode(
                     execute_response::ExitCode {
@@ -159,7 +159,9 @@ impl ExecutionService for ReapiExecutionService {
                         execute_response::ExecutionMetadata {
                             worker: "worker-1".to_string(),
                             queued_duration_ns: 0,
-                            worker_start_timestamp_ns: Utc::now().timestamp_nanos(),
+                            worker_start_timestamp_ns: Utc::now()
+                                .timestamp_nanos_opt()
+                                .unwrap_or(0),
                             worker_completed_timestamp_ns: 0,
                             input_fetch_duration_ns: 0,
                             output_upload_duration_ns: 0,
@@ -210,7 +212,7 @@ impl ExecutionService for ReapiExecutionService {
                     // Cache result
                     let _ = cache
                         .put(
-                            &ReapiExecutionService::action_result_cache_key(&action_digest.hash),
+                            &action_result_cache_key(&action_digest.hash),
                             &serde_json::to_vec(&result).unwrap_or_default(),
                         )
                         .await;
@@ -281,10 +283,10 @@ impl CacheService for ReapiCacheService {
     ) -> Result<Response<ProtoActionResult>, Status> {
         let action_digest = request.into_inner().action_digest;
 
-        match self.get_cached_action_result(&action_digest).await {
+        match get_cached_action_result(&self.cache, &action_digest).await {
             Ok(Some(result)) => {
-                let stdout_digest = Sha2Digest::digest(&result.stdout_raw);
-                let stderr_digest = Sha2Digest::digest(&result.stderr_raw);
+                let stdout_digest = sha2::Sha256::digest(&result.stdout_raw);
+                let stderr_digest = sha2::Sha256::digest(&result.stderr_raw);
                 let proto_result = ProtoActionResult {
                     action_digest: action_digest.clone(),
                     exit_code: result.exit_code,
@@ -296,7 +298,7 @@ impl CacheService for ReapiCacheService {
                         digest: format!("sha256:{}", hex::encode(stderr_digest)),
                         size: result.stderr_raw.len() as i64,
                     }),
-                    execution_info: Some(execution_info::ExecutionInfo {
+                    execution_info: Some(ExecutionInfo {
                         input_fetch_completed_timestamp: result
                             .execution_metadata
                             .worker_start_timestamp
@@ -321,7 +323,10 @@ impl CacheService for ReapiCacheService {
         &self,
         request: Request<UpdateActionResultRequest>,
     ) -> Result<Response<UpdateActionResultResponse>, Status> {
-        let proto_result = request.into_inner().action_result;
+        let proto_result = request
+            .into_inner()
+            .action_result
+            .ok_or_else(|| Status::invalid_argument("Missing action result"))?;
 
         let result = ActionResult {
             output_files: HashMap::new(),
@@ -338,15 +343,15 @@ impl CacheService for ReapiCacheService {
                 worker_start_timestamp: proto_result
                     .execution_info
                     .as_ref()
-                    .map(|ei| Some(ei.input_fetch_completed_timestamp)),
+                    .map(|ei| ei.input_fetch_completed_timestamp),
                 worker_completed_timestamp: proto_result
                     .execution_info
                     .as_ref()
-                    .map(|ei| Some(ei.execution_completed_timestamp)),
+                    .map(|ei| ei.execution_completed_timestamp),
             },
         };
 
-        self.put_cached_action_result(&proto_result.action_digest, &result)
+        put_cached_action_result(&self.cache, &proto_result.action_digest, &result)
             .await
             .map_err(|e| Status::internal(format!("Cache error: {}", e)))?;
 
