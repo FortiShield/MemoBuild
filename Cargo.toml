@@ -1,3 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/memobuild-core",
+    "crates/memobuild-engine",
+    "crates/memobuild-cache",
+    "crates/memobuild-remote",
+    "crates/memobuild-container",
+    "crates/memobuild-server",
+    "crates/memobuild-security",
+    "crates/memobuild-observability",
+    "crates/memobuild-operator",
+    "crates/memobuild-cli",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
 [package]
 name = "memobuild"
 version = "0.2.0"
@@ -10,6 +35,9 @@ keywords = ["build-system", "caching", "docker", "incremental", "oci"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
+memobuild-core = { path = "crates/memobuild-core" }
+memobuild-observability = { path = "crates/memobuild-observability" }
+memobuild-cache = { path = "crates/memobuild-cache" }
 blake3 = "1"
 petgraph = "0.6"
 serde = { version = "1", features = ["derive"] }

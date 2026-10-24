@@ -1,0 +1,16 @@
+[package]
+name = "memobuild-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "CLI entry point and user-facing command wiring."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+memobuild-engine = { path = "../memobuild-engine" }
+
+[lints]
+workspace = true

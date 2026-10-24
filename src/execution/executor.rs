@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::cache::hybrid::HybridCache;
+use crate::cache::HybridCache;
 use crate::graph::BuildGraph;
 
 /// Incremental executor that supports parallel execution and selective rebuilds
@@ -74,6 +74,8 @@ impl IncrementalExecutor {
 
     /// Execute the build graph with parallel and incremental capabilities
     pub async fn execute(&mut self, graph: &mut BuildGraph) -> Result<ExecutionStats> {
+        let _span = crate::build_span!("dag.execute");
+
         let start_time = Instant::now();
 
         // Reset stats

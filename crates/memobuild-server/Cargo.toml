@@ -1,0 +1,18 @@
+[package]
+name = "memobuild-server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "API and service composition. Keep business logic in engine/core crates."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+memobuild-engine = { path = "../memobuild-engine" }
+memobuild-cache = { path = "../memobuild-cache" }
+memobuild-remote = { path = "../memobuild-remote" }
+
+[lints]
+workspace = true

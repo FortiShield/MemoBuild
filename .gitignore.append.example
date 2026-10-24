@@ -1,0 +1,3 @@
+# Consider merging selectively into the existing .gitignore:
+# /target/
+# Avoid ignoring dist/ automatically if published package artifacts are intentionally committed.

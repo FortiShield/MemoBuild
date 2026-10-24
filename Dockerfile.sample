@@ -1,18 +1,14 @@
 # Sample Dockerfile for MemoBuild testing
+# Minimal example: builds a Node.js app and serves it
 FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json /app/
+COPY package.json .
+RUN npm install --production
 
-RUN npm install
-
-COPY src /app/src
-
+COPY src ./src
 RUN npm run build
 
-ENV NODE_ENV=production
-
 EXPOSE 3000
-
 CMD ["node", "dist/index.js"]

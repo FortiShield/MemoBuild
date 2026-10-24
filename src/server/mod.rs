@@ -11,6 +11,7 @@ use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, head, post, put};
 use axum::{Json, Router};
+pub use memobuild_cache::metadata;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
@@ -18,8 +19,6 @@ use tokio::sync::broadcast;
 use crate::server::metadata::MetadataStore;
 use crate::server::storage::{ArtifactStorage, LocalStorage};
 use crate::storage::storage_from_env;
-
-pub mod metadata;
 pub mod storage;
 
 pub struct AppState {

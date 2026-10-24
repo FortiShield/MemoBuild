@@ -8,9 +8,9 @@ use async_trait::async_trait;
 use fred::prelude::*;
 use fred::types::Scanner;
 
-use crate::dashboard::BuildEvent;
+use crate::cache::RemoteCache;
+use crate::events::BuildEvent;
 use crate::graph::BuildGraph;
-use crate::remote_cache::RemoteCache;
 
 /// Redis-backed L1 distributed cache.
 ///

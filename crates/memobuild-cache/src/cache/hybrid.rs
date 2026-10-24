@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use crate::cache::local::LocalCache;
 use crate::cache::remote::RemoteCache;
-use crate::dashboard::BuildEvent;
+use crate::events::BuildEvent;
 use crate::graph::BuildGraph;
 
 pub struct HybridCache {

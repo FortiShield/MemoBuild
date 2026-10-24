@@ -1,0 +1,32 @@
+# MERGE REFERENCE ONLY — do not replace the existing root Cargo.toml blindly.
+# Preserve any existing [package], [lib], [[bin]], [features], [dependencies],
+# [build-dependencies], and build.rs requirements.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/memobuild-core",
+    "crates/memobuild-engine",
+    "crates/memobuild-cache",
+    "crates/memobuild-remote",
+    "crates/memobuild-container",
+    "crates/memobuild-server",
+    "crates/memobuild-security",
+    "crates/memobuild-observability",
+    "crates/memobuild-operator",
+    "crates/memobuild-cli",
+]
+# Add "exclude" entries only when required by the real repository layout.
+# Keep root package as a workspace member if it is also a package.
+
+[workspace.package]
+# Example only. Confirm existing project metadata before merging.
+edition = "2021"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+# Start with warnings; tighten only after the existing baseline is understood.
+all = "warn"

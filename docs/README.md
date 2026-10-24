@@ -47,6 +47,7 @@ docs/
 | Document | Description |
 |----------|-------------|
 | [Architecture](ARCHITECTURE.md) | High-level system design |
+| [Architecture Inventory](ARCHITECTURE_INVENTORY.md) | Verified package boundaries, module overlaps, and migration implications |
 | [Vision](VISION.md) | Project vision and goals |
 | [Production Roadmap](PRODUCTION_ROADMAP.md) | Path to production readiness |
 | [ADR-001: Extension System](ADR-001-EXTENSION-SYSTEM.md) | Extension system decision |

@@ -15,8 +15,8 @@ use serde::Deserialize;
 use tokio::sync::broadcast;
 
 use crate::auto_scaling::{AutoScaler, ScalingMetrics};
+use crate::cache::RemoteCache;
 use crate::cache_cluster::{CacheCluster, ClusterStatus};
-use crate::remote_cache::RemoteCache;
 use crate::server::metadata::MetadataStoreTrait;
 use crate::server::storage::ArtifactStorage;
 

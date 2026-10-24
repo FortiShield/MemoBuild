@@ -1,22 +1,18 @@
-FROM alpine:3.18
-
-# Simulate build environment
-RUN apk add --no-cache nodejs npm
+# Base builder Dockerfile for MemoBuild
+# Used for development and CI builds
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Step 1: Copy package.json
+# Install dependencies
 COPY package.json .
-
-# Step 2: Install dependencies
 RUN npm install
 
-# Step 3: Copy source
+# Copy source and build
 COPY src ./src
-
-# Step 4: Build
 RUN npm run build
 
-# Final config
+# Production-ready configuration
 ENV NODE_ENV=production
+EXPOSE 3000
 CMD ["npm", "start"]

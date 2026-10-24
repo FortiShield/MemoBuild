@@ -1,0 +1,15 @@
+[package]
+name = "memobuild-security"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Security policy, artifact verification, provenance, and security abstractions."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+
+[lints]
+workspace = true
