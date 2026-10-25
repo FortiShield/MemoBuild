@@ -1,0 +1,39 @@
+[package]
+name = "memobuild-cache"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Cache contracts and backend implementations. Avoid CLI and server dependencies."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+memobuild-observability = { path = "../memobuild-observability" }
+anyhow = "1"
+async-trait = "0.1"
+blake3 = "1"
+deadpool-postgres = "0.10"
+flate2 = "1"
+fred = { version = "6", features = ["serde-json"] }
+rcgen = "0.11"
+rusqlite = { version = "0.29", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+rustls = "0.21"
+rustls-pemfile = "1.0"
+axum-server = { version = "0.5", features = ["tls-rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "macros", "rt", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2"
+futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

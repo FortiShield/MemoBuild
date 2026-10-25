@@ -179,13 +179,13 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.89"
+version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -2959,6 +2959,9 @@ dependencies = [
  "indicatif",
  "k8s-openapi",
  "kube",
+ "memobuild-cache",
+ "memobuild-core",
+ "memobuild-observability",
  "oci-spec",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2986,7 +2989,9 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-postgres",
+ "tokio-stream",
  "tonic 0.14.5",
+ "tonic-prost",
  "tonic-prost-build",
  "tonic-reflection",
  "tower-http 0.4.4",
@@ -2997,6 +3002,134 @@ dependencies = [
  "uuid",
  "vaultrs",
  "walkdir",
+]
+
+[[package]]
+name = "memobuild-cache"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum-server",
+ "blake3",
+ "chrono",
+ "deadpool-postgres",
+ "flate2",
+ "fred",
+ "futures",
+ "memobuild-core",
+ "memobuild-observability",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "rustls 0.21.12",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
+name = "memobuild-cli"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+ "memobuild-engine",
+]
+
+[[package]]
+name = "memobuild-container"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+ "memobuild-engine",
+]
+
+[[package]]
+name = "memobuild-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "flate2",
+ "glob",
+ "hex",
+ "rand 0.8.5",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
+name = "memobuild-engine"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+]
+
+[[package]]
+name = "memobuild-observability"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.6.20",
+ "chrono",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "prometheus-client",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "memobuild-operator"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+ "memobuild-server",
+]
+
+[[package]]
+name = "memobuild-remote"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+ "memobuild-engine",
+]
+
+[[package]]
+name = "memobuild-security"
+version = "0.1.0"
+dependencies = [
+ "memobuild-core",
+]
+
+[[package]]
+name = "memobuild-server"
+version = "0.1.0"
+dependencies = [
+ "memobuild-cache",
+ "memobuild-core",
+ "memobuild-engine",
+ "memobuild-remote",
 ]
 
 [[package]]
@@ -4985,6 +5118,17 @@ name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",

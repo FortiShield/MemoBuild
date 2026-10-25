@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::cache::remote::RemoteCache;
-use crate::dashboard::BuildEvent;
+use crate::events::BuildEvent;
 use crate::graph::BuildGraph;
 
 /// Configuration for a cache cluster node

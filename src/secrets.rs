@@ -10,8 +10,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 
-pub mod aws;
-
 /// Trait for secret providers
 #[async_trait]
 pub trait SecretProvider: Send + Sync {

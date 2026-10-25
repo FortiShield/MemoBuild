@@ -1,2 +1,8 @@
-RUN echo 'Hello from Build Farm'
-RUN ls -R
+# Farm test Dockerfile for MemoBuild
+# Validates farm build environment and collects system info
+FROM alpine:3.18
+
+RUN echo 'Hello from Build Farm' && \
+    echo "Farm build running on $(uname -m)" && \
+    echo "Alpine version: $(cat /etc/alpine-release)" && \
+    ls -R /app 2>/dev/null || echo "No /app directory"

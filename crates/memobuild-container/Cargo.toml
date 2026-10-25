@@ -1,0 +1,16 @@
+[package]
+name = "memobuild-container"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Container-related parsing, sandbox adapters, and OCI export integration."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+memobuild-engine = { path = "../memobuild-engine" }
+
+[lints]
+workspace = true

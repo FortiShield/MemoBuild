@@ -1,0 +1,46 @@
+{
+  "description": "Conservative proposed dependency allowlist. Review before enforcing in production CI.",
+  "rules": {
+    "memobuild-core": [],
+    "memobuild-engine": [
+      "memobuild-core"
+    ],
+    "memobuild-cache": [
+      "memobuild-core",
+      "memobuild-observability"
+    ],
+    "memobuild-remote": [
+      "memobuild-core",
+      "memobuild-engine"
+    ],
+    "memobuild-container": [
+      "memobuild-core",
+      "memobuild-engine"
+    ],
+    "memobuild-server": [
+      "memobuild-core",
+      "memobuild-engine",
+      "memobuild-cache",
+      "memobuild-remote"
+    ],
+    "memobuild-security": [
+      "memobuild-core"
+    ],
+    "memobuild-observability": [
+      "memobuild-core"
+    ],
+    "memobuild-operator": [
+      "memobuild-core",
+      "memobuild-server"
+    ],
+    "memobuild-cli": [
+      "memobuild-core",
+      "memobuild-engine"
+    ]
+  },
+  "notes": [
+    "This checks only direct path dependencies between scaffold crates.",
+    "External crates and feature-gated dependencies need separate review.",
+    "Adjust rules to the real architecture before making this a required CI gate."
+  ]
+}

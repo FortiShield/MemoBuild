@@ -239,7 +239,7 @@ async fn revoke_token_handler(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let tokens = state.tokens.read();
     let mut to_remove: Option<String> = None;
-    for (key, _) in tokens.iter() {
+    for key in tokens.keys() {
         if key.starts_with(&req.token_prefix) {
             to_remove = Some(key.clone());
             break;
@@ -367,5 +367,4 @@ pub fn auth_routes(state: Arc<AuthState>) -> Router {
 pub fn rate_limit_layer() -> impl Clone {
     // Rate limiting is handled in auth_middleware
     // This is a placeholder for future integration
-    ()
 }

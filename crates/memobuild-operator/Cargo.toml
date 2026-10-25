@@ -1,0 +1,16 @@
+[package]
+name = "memobuild-operator"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Kubernetes operator/controller integration. Keep Kubernetes dependencies out of core."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+memobuild-core = { path = "../memobuild-core" }
+memobuild-server = { path = "../memobuild-server" }
+
+[lints]
+workspace = true

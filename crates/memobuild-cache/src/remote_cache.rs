@@ -8,30 +8,52 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use reqwest::Client;
 
-use crate::cache::remote::RemoteCache;
-use crate::dashboard::BuildEvent;
-use crate::error::{calculate_backoff, RetryConfig};
-use crate::graph::BuildGraph;
+use crate::cache::remote::RemoteCache as RemoteCacheTrait;
+use crate::events::BuildEvent;
 
-#[derive(Clone)]
+/// HTTP remote cache client implementing the canonical `RemoteCache` trait.
+/// Provides remote cache operations over HTTP with retry logic, TLS configuration,
+/// gzip compression, and exponential backoff.
+#[derive(Debug, Clone)]
 pub struct HttpRemoteCache {
     base_url: String,
     client: Client,
+    #[allow(dead_code)]
+    auth_token: Option<String>,
 }
 
 impl HttpRemoteCache {
     pub fn new(base_url: String) -> Self {
-        Self::with_tls_config(base_url, None)
+        Self::with_auth(base_url, None)
+    }
+
+    pub fn with_auth(base_url: String, auth_token: Option<String>) -> Self {
+        Self::with_tls_and_auth(base_url, None, auth_token)
     }
 
     pub fn with_tls_config(base_url: String, tls_config: Option<&crate::tls::TlsConfig>) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "X-MemoBuild-API-Version",
-            reqwest::header::HeaderValue::from_static("1.0"),
-        );
+        Self::with_tls_and_auth(base_url, tls_config, None)
+    }
 
-        let mut builder = Client::builder().default_headers(headers);
+    pub fn with_tls_and_auth(
+        base_url: String,
+        tls_config: Option<&crate::tls::TlsConfig>,
+        auth_token: Option<String>,
+    ) -> Self {
+        let mut builder = Client::builder().default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "X-MemoBuild-API-Version",
+                reqwest::header::HeaderValue::from_static("1.0"),
+            );
+            if let Some(ref token) = auth_token {
+                headers.insert(
+                    "Authorization",
+                    reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+                );
+            }
+            headers
+        });
 
         if let Some(tls) = tls_config {
             if let Ok(client_config) = tls.client_config() {
@@ -43,45 +65,18 @@ impl HttpRemoteCache {
 
         let client = builder.build().unwrap_or_else(|_| Client::new());
 
-        Self { base_url, client }
-    }
-}
-
-/// Helper for retrying operations with exponential backoff
-async fn retry_with_backoff<F, Fut, T>(mut operation: F, config: &RetryConfig) -> Result<T>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T>>,
-{
-    let mut attempt = 0;
-    loop {
-        match operation().await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                attempt += 1;
-                if attempt >= config.max_attempts {
-                    return Err(anyhow::anyhow!(
-                        "Operation failed after {} attempts: {}",
-                        config.max_attempts,
-                        e
-                    ));
-                }
-
-                let backoff_ms = calculate_backoff(attempt - 1, config);
-                eprintln!(
-                    "⚠️  Attempt {} failed, retrying in {}ms: {}",
-                    attempt, backoff_ms, e
-                );
-                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            }
+        Self {
+            base_url,
+            client,
+            auth_token,
         }
     }
 }
 
 #[async_trait]
-impl RemoteCache for HttpRemoteCache {
+impl RemoteCacheTrait for HttpRemoteCache {
     async fn has(&self, hash: &str) -> Result<bool> {
-        let config = RetryConfig::default();
+        let config = crate::error::RetryConfig::default();
         retry_with_backoff(
             || async {
                 let url = format!("{}/cache/{}", self.base_url, hash);
@@ -99,7 +94,7 @@ impl RemoteCache for HttpRemoteCache {
     }
 
     async fn get(&self, hash: &str) -> Result<Option<Vec<u8>>> {
-        let config = RetryConfig::default();
+        let config = crate::error::RetryConfig::default();
         retry_with_backoff(
             || async {
                 let url = format!("{}/cache/{}", self.base_url, hash);
@@ -137,7 +132,7 @@ impl RemoteCache for HttpRemoteCache {
             return Ok(());
         }
 
-        let config = RetryConfig::default();
+        let config = crate::error::RetryConfig::default();
         retry_with_backoff(
             || async {
                 let url = format!("{}/cache/{}", self.base_url, hash);
@@ -241,7 +236,7 @@ impl RemoteCache for HttpRemoteCache {
         Ok(())
     }
 
-    async fn report_dag(&self, dag: &BuildGraph) -> Result<()> {
+    async fn report_dag(&self, dag: &crate::graph::BuildGraph) -> Result<()> {
         let url = format!("{}/dag", self.base_url);
         let resp = self.client.post(&url).json(dag).send().await?;
         if !resp.status().is_success() {
@@ -267,12 +262,49 @@ impl RemoteCache for HttpRemoteCache {
     }
 }
 
+/// Helper for retrying operations with exponential backoff
+async fn retry_with_backoff<F, Fut, T>(
+    mut operation: F,
+    config: &crate::error::RetryConfig,
+) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut attempt = 0;
+    loop {
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                attempt += 1;
+                if attempt >= config.max_attempts {
+                    return Err(anyhow::anyhow!(
+                        "Operation failed after {} attempts: {}",
+                        config.max_attempts,
+                        e
+                    ));
+                }
+
+                let backoff_ms = crate::error::calculate_backoff(attempt - 1, config);
+                eprintln!(
+                    "⚠️  Attempt {} failed, retrying in {}ms: {}",
+                    attempt, backoff_ms, e
+                );
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
 
     /// Helper to test retry_with_backoff logic
-    pub async fn test_retry_with_backoff<F, Fut, T>(operation: F, config: &RetryConfig) -> Result<T>
+    pub async fn test_retry_with_backoff<F, Fut, T>(
+        operation: F,
+        config: &crate::error::RetryConfig,
+    ) -> Result<T>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T>>,

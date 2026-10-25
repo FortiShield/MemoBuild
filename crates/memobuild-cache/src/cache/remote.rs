@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::dashboard::BuildEvent;
+use crate::events::BuildEvent;
 use crate::graph::BuildGraph;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,6 +11,10 @@ pub struct RemoteCacheEntry {
     pub size: u64,
 }
 
+/// Canonical RemoteCache trait defining the cache operation interface.
+/// This is the shared semantic interface used by all cache implementations.
+/// Implementations must provide: has/get/put for content-addressable storage,
+/// and layered cache methods for OCI layer sharing.
 #[async_trait]
 pub trait RemoteCache: Send + Sync {
     async fn has(&self, hash: &str) -> Result<bool>;

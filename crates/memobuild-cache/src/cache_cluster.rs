@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use crate::remote_cache::RemoteCache;
+use crate::cache::RemoteCache;
 
 /// Configuration for a cache cluster node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -518,7 +518,7 @@ impl RemoteCache for DistributedCache {
             .await
     }
 
-    async fn report_build_event(&self, event: crate::dashboard::BuildEvent) -> Result<()> {
+    async fn report_build_event(&self, event: crate::events::BuildEvent) -> Result<()> {
         self.local_cache.report_build_event(event).await
     }
 
