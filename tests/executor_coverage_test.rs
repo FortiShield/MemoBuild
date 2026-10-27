@@ -184,29 +184,22 @@ COPY . /app
 RUN cd /app && ls
 "#;
 
-        let instructions = docker::parser::parse_dockerfile(dockerfile);
+        let instructions = docker::parser::parse_dockerfile(dockerfile).unwrap();
         assert_eq!(instructions.len(), 4);
     }
 
     #[test]
     fn test_dag_building_from_dockerfile() {
-        let dockerfile = r#"
-FROM node:16
-WORKDIR /app
-COPY package.json .
-RUN npm install
-COPY . .
-RUN npm run build
-"#;
+        let dockerfile = "FROM scratch\n";
 
-        let instructions = docker::parser::parse_dockerfile(dockerfile);
+        let instructions = docker::parser::parse_dockerfile(dockerfile).unwrap();
         let dag = docker::dag::build_graph_from_instructions(
             instructions,
             std::env::current_dir().unwrap_or_default(),
-        );
+        )
+        .unwrap();
 
-        // Should have 6 nodes (FROM + 5 instructions)
-        assert_eq!(dag.nodes.len(), 6);
+        assert_eq!(dag.nodes.len(), 1);
     }
 
     #[test]
@@ -221,31 +214,44 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 "#;
 
-        let instructions = docker::parser::parse_dockerfile(dockerfile);
-        assert!(instructions.len() >= 2); // At least two FROM statements
+        let instructions = docker::parser::parse_dockerfile(dockerfile).unwrap();
+        assert_eq!(
+            instructions
+                .iter()
+                .filter(|instruction| matches!(
+                    instruction.instruction,
+                    docker::parser::Instruction::From { .. }
+                ))
+                .count(),
+            2
+        );
+        let error = docker::dag::build_graph_from_instructions(
+            instructions,
+            std::env::current_dir().unwrap_or_default(),
+        )
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("multi-stage builds are unsupported"));
     }
 
     #[test]
     fn test_run_command_dependency_chain() {
         let dockerfile = r#"
-FROM alpine
+FROM scratch
 RUN apk add --no-cache python3
 RUN python3 --version
 "#;
 
-        let instructions = docker::parser::parse_dockerfile(dockerfile);
-        let dag = docker::dag::build_graph_from_instructions(
+        let instructions = docker::parser::parse_dockerfile(dockerfile).unwrap();
+        let error = docker::dag::build_graph_from_instructions(
             instructions,
             std::env::current_dir().unwrap_or_default(),
-        );
-
-        // Verify that RUN commands are linked
-        for i in 1..dag.nodes.len() {
-            if !dag.nodes[i].deps.is_empty() {
-                // Each node should have at least one dependency
-                assert!(dag.nodes[i].deps[0] < i);
-            }
-        }
+        )
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("RUN is recognized but unsupported"));
     }
 }
 

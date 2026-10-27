@@ -1,242 +1,380 @@
-use crate::docker::parser::Instruction;
-use crate::graph::{BuildGraph, Node, NodeMetadata};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::docker::parser::{Instruction, LocatedInstruction};
+use crate::graph::{BuildGraph, Node, NodeKind, NodeMetadata};
+use anyhow::{bail, Context, Result};
+use std::path::{Component, Path, PathBuf};
 
-/// Convert a flat list of Dockerfile instructions into a dependency graph.
-/// Supports DAG construction with conditional branching and smart dependency tracking.
-///
-/// Key features:
-/// - COPY nodes create dependencies on source files
-/// - RUN commands depend on preceding COPY operations for their sources
-/// - Multi-stage builds and conditional branching support
-/// - Content-addressed identities for incremental builds
-pub fn build_graph_from_instructions(
-    instructions: Vec<Instruction>,
-    project_root: PathBuf,
-) -> BuildGraph {
-    let mut nodes: Vec<Node> = Vec::new();
-    let mut copy_sources: HashMap<String, usize> = HashMap::new(); // Track COPY operations by source
-    let mut env_vars: HashMap<String, String> = HashMap::new(); // Track environment variables
-    let mut _workdir: Option<String> = None; // Track current working directory
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyOperation {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+    pub destination_is_directory: bool,
+    pub source_line: usize,
+}
 
-    for (i, instr) in instructions.iter().enumerate() {
-        let name = format!("{:?}", instr);
-        let mut env = std::collections::HashMap::new();
-        let mut metadata = NodeMetadata::default();
+#[derive(Debug, Clone)]
+pub struct CompiledBuild {
+    pub context_root: PathBuf,
+    pub copies: Vec<CopyOperation>,
+    pub cmd: Option<Vec<String>>,
+    pub entrypoint: Option<Vec<String>>,
+    pub graph: BuildGraph,
+}
 
-        let (content, source_path, kind, deps, _parallelizable) = match instr {
-            Instruction::From(img) => {
-                // FROM nodes have no dependencies (base image)
-                (
-                    format!("FROM {}", img),
-                    None,
-                    crate::graph::NodeKind::From,
-                    vec![],
-                    true, // FROM can be parallelized if multiple base images
-                )
-            }
-            Instruction::Workdir(dir) => {
-                _workdir = Some(dir.clone());
-                // WORKDIR depends on previous operations that might affect the filesystem
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = true; // WORKDIR operations can be parallelized if independent
-                (
-                    format!("WORKDIR {}", dir),
-                    None,
-                    crate::graph::NodeKind::Workdir,
-                    deps,
-                    true,
-                )
-            }
-            Instruction::Copy(src, dst) => {
-                let path = if src == "." {
-                    // Fix 3: COPY . . → hash entire project root
-                    project_root.clone()
-                } else {
-                    project_root.join(src)
+pub fn compile_dockerfile(
+    instructions: Vec<LocatedInstruction>,
+    context_dir: PathBuf,
+) -> Result<CompiledBuild> {
+    if instructions.is_empty() {
+        bail!("Dockerfile contains no instructions; add `FROM scratch`");
+    }
+    if !matches!(
+        instructions.first().map(|item| &item.instruction),
+        Some(Instruction::From { .. })
+    ) {
+        bail!(
+            "Dockerfile line {}: FROM must be the first instruction",
+            instructions[0].location.line
+        );
+    }
+
+    let bases: Vec<_> = instructions
+        .iter()
+        .filter(|item| matches!(item.instruction, Instruction::From { .. }))
+        .collect();
+    if bases.len() > 1 {
+        bail!(
+            "Dockerfile line {}: multi-stage builds are unsupported; \
+             the first milestone allows one `FROM scratch` stage",
+            bases[1].location.line
+        );
+    }
+
+    let base = &instructions[0];
+    match &base.instruction {
+        Instruction::From { image, options } if image == "scratch" && options.is_empty() => {}
+        Instruction::From { image, .. } if image == "scratch" => {
+            bail!(
+                "Dockerfile line {}: FROM options and stage aliases are unsupported; \
+                 use exactly `FROM scratch`",
+                base.location.line
+            );
+        }
+        Instruction::From { image, .. } => {
+            bail!(
+                "Dockerfile line {}: base image '{image}' is unsupported. \
+                 Only `FROM scratch` is accepted; external image resolution and \
+                 filesystem unpacking are not implemented",
+                base.location.line
+            );
+        }
+        _ => unreachable!("the first instruction was checked to be FROM"),
+    }
+
+    let context_root = std::fs::canonicalize(&context_dir).with_context(|| {
+        format!(
+            "Failed to resolve build context directory {}",
+            context_dir.display()
+        )
+    })?;
+    if !context_root.is_dir() {
+        bail!(
+            "Build context is not a directory: {}",
+            context_root.display()
+        );
+    }
+
+    let mut nodes = Vec::with_capacity(instructions.len());
+    let mut copies = Vec::new();
+    let mut cmd = None;
+    let mut entrypoint = None;
+    for located in &instructions {
+        let index = nodes.len();
+        let previous = index.checked_sub(1).into_iter().collect();
+        let (name, content, kind, source_path) = match &located.instruction {
+            Instruction::From { image, .. } => (
+                format!("FROM {image}"),
+                "FROM scratch".to_string(),
+                NodeKind::From,
+                None,
+            ),
+            Instruction::Copy {
+                flags,
+                sources,
+                destination,
+            } => {
+                let operation = validate_copy(
+                    located.location.line,
+                    flags,
+                    sources,
+                    destination,
+                    &context_root,
+                )?;
+                let source_path = context_root.join(&operation.source);
+                let content = format!(
+                    "COPY {} {}",
+                    operation.source.display(),
+                    operation.destination.display()
+                );
+                let kind = NodeKind::Copy {
+                    src: operation.source.clone(),
+                    dst: operation.destination.clone(),
                 };
-
-                // Track this COPY operation for potential RUN dependencies
-                copy_sources.insert(src.clone(), i);
-
-                // COPY depends on previous filesystem operations
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-
-                metadata.parallelizable = true; // COPY operations can be parallelized
-                metadata.tags.push("copy".to_string());
-
-                (
-                    format!("COPY {} {}", src, dst),
-                    Some(path),
-                    crate::graph::NodeKind::Copy {
-                        src: PathBuf::from(src),
-                        dst: PathBuf::from(dst),
-                    },
-                    deps,
-                    true,
-                )
+                copies.push(operation);
+                ("COPY".to_string(), content, kind, Some(source_path))
             }
-            Instruction::Run(cmd) => {
-                // Analyze RUN command to determine dependencies
-                let mut deps = if i > 0 { vec![i - 1] } else { vec![] };
-
-                // Check if RUN command references files that were copied
-                for (src_path, copy_idx) in &copy_sources {
-                    if (cmd.contains(src_path) || cmd.contains(&format!("./{}", src_path)))
-                        && !deps.contains(copy_idx)
-                    {
-                        deps.push(*copy_idx);
-                    }
+            Instruction::Cmd(arguments) => {
+                if cmd.is_some() {
+                    bail!(
+                        "Dockerfile line {}: duplicate CMD instructions are unsupported",
+                        located.location.line
+                    );
                 }
-
-                // RUN commands that don't modify shared state can be parallelized
-                let is_parallelizable =
-                    !cmd.contains("rm") && !cmd.contains("mv") && !cmd.contains("chmod");
-                metadata.parallelizable = is_parallelizable;
-                metadata.tags.push("run".to_string());
-
+                cmd = Some(arguments.clone());
                 (
-                    cmd.clone(),
+                    "CMD".to_string(),
+                    serde_json::to_string(arguments)?,
+                    NodeKind::Cmd,
                     None,
-                    crate::graph::NodeKind::Run,
-                    deps,
-                    is_parallelizable,
                 )
             }
-            Instruction::Env(key, value) => {
-                env.insert(key.clone(), value.clone());
-                env_vars.insert(key.clone(), value.clone());
-
-                // ENV operations can be parallelized if they don't conflict
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = true;
-                metadata.tags.push("env".to_string());
-
+            Instruction::Entrypoint(arguments) => {
+                if entrypoint.is_some() {
+                    bail!(
+                        "Dockerfile line {}: duplicate ENTRYPOINT instructions are unsupported",
+                        located.location.line
+                    );
+                }
+                entrypoint = Some(arguments.clone());
                 (
-                    format!("ENV {}={}", key, value),
+                    "ENTRYPOINT".to_string(),
+                    serde_json::to_string(arguments)?,
+                    NodeKind::Entrypoint,
                     None,
-                    crate::graph::NodeKind::Env,
-                    deps,
-                    true,
                 )
             }
-            Instruction::Cmd(cmd) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = true;
-                metadata.tags.push("cmd".to_string());
-
-                (
-                    format!("CMD {}", cmd),
-                    None,
-                    crate::graph::NodeKind::Cmd,
-                    deps,
-                    true,
-                )
+            Instruction::Unsupported { keyword, .. } => {
+                bail!(
+                    "Dockerfile line {}: {keyword} is recognized but unsupported by the \
+                     first production milestone",
+                    located.location.line
+                );
             }
-            Instruction::Git(url, target) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = true;
-                metadata.tags.push("git".to_string());
-
-                (
-                    format!("GIT {} {}", url, target),
-                    None,
-                    crate::graph::NodeKind::Git {
-                        url: url.clone(),
-                        target: PathBuf::from(target),
-                    },
-                    deps,
-                    true,
-                )
-            }
-            Instruction::RunExtend(cmd, parallelizable) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = *parallelizable;
-                metadata.tags.push("extension".to_string());
-                metadata.tags.push("run-extend".to_string());
-
-                (
-                    cmd.clone(),
-                    None,
-                    crate::graph::NodeKind::RunExtend {
-                        command: cmd.clone(),
-                        parallelizable: *parallelizable,
-                    },
-                    deps,
-                    *parallelizable,
-                )
-            }
-            Instruction::CopyExtend(src, dst, tags) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = true;
-                metadata.tags.extend(tags.clone());
-                metadata.tags.push("extension".to_string());
-
-                let path = if src == "." {
-                    project_root.clone()
-                } else {
-                    project_root.join(src)
-                };
-
-                (
-                    format!("COPY_EXTEND {} -> {}", src, dst),
-                    Some(path),
-                    crate::graph::NodeKind::CopyExtend {
-                        src: PathBuf::from(src),
-                        dst: PathBuf::from(dst),
-                        tags: tags.clone(),
-                    },
-                    deps,
-                    true,
-                )
-            }
-            Instruction::Hook(name, params) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.parallelizable = false; // Hooks execute sequentially by default
-                metadata.tags.push("hook".to_string());
-
-                (
-                    format!("HOOK {} {:?}", name, params),
-                    None,
-                    crate::graph::NodeKind::CustomHook {
-                        hook_name: name.clone(),
-                        params: params.clone(),
-                    },
-                    deps,
-                    false,
-                )
-            }
-            Instruction::Other(s) => {
-                let deps = if i > 0 { vec![i - 1] } else { vec![] };
-                metadata.tags.push("other".to_string());
-
-                (
-                    s.clone(),
-                    None,
-                    crate::graph::NodeKind::Other,
-                    deps,
-                    false, // Conservative: unknown operations are not parallelizable
-                )
+            instruction => {
+                bail!(
+                    "Dockerfile line {}: {} is recognized but unsupported because its \
+                     filesystem or image-configuration semantics are not implemented",
+                    located.location.line,
+                    instruction_name(instruction)
+                );
             }
         };
 
-        let node = Node {
-            id: i,
+        nodes.push(Node {
+            id: index,
             name,
             content,
             kind,
-            hash: "".into(),
-            dirty: false,
+            hash: String::new(),
+            dirty: true,
+            deps: previous,
             source_path,
-            env,
+            env: Default::default(),
             cache_hit: false,
-            deps,
-            metadata,
-        };
-
-        nodes.push(node);
+            metadata: NodeMetadata::default(),
+        });
     }
 
-    BuildGraph { nodes }
+    Ok(CompiledBuild {
+        context_root,
+        copies,
+        cmd,
+        entrypoint,
+        graph: BuildGraph { nodes },
+    })
+}
+
+pub fn build_graph_from_instructions(
+    instructions: Vec<LocatedInstruction>,
+    project_root: PathBuf,
+) -> Result<BuildGraph> {
+    Ok(compile_dockerfile(instructions, project_root)?.graph)
+}
+
+fn instruction_name(instruction: &Instruction) -> &'static str {
+    match instruction {
+        Instruction::From { .. } => "FROM",
+        Instruction::Workdir(_) => "WORKDIR",
+        Instruction::Copy { .. } => "COPY",
+        Instruction::Run(_) => "RUN",
+        Instruction::Env { .. } => "ENV",
+        Instruction::Cmd(_) => "CMD",
+        Instruction::Entrypoint(_) => "ENTRYPOINT",
+        Instruction::Unsupported { keyword, .. } => match keyword.as_str() {
+            "GIT" => "GIT",
+            "RUN_EXTEND" => "RUN_EXTEND",
+            "COPY_EXTEND" => "COPY_EXTEND",
+            "HOOK" => "HOOK",
+            _ => "unsupported instruction",
+        },
+    }
+}
+
+fn validate_copy(
+    line: usize,
+    flags: &[String],
+    sources: &[String],
+    destination: &str,
+    context_root: &Path,
+) -> Result<CopyOperation> {
+    if let Some(from) = flags.iter().find_map(|flag| flag.strip_prefix("--from=")) {
+        if from != "0" && from != "scratch" {
+            bail!(
+                "Dockerfile line {line}: COPY references unknown stage '{from}'; \
+                 aliases and multi-stage builds are unsupported"
+            );
+        }
+        bail!(
+            "Dockerfile line {line}: COPY --from is unsupported because multi-stage \
+             filesystem transfer is not implemented"
+        );
+    }
+    if !flags.is_empty() {
+        bail!(
+            "Dockerfile line {line}: COPY flags are unsupported; use plain \
+             `COPY <source> <destination>`"
+        );
+    }
+    if sources.len() != 1 {
+        bail!("Dockerfile line {line}: COPY requires exactly one source and one destination");
+    }
+
+    let source_text = &sources[0];
+    let source = Path::new(source_text);
+    if source.is_absolute()
+        || source.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+        || source_text.contains('\\')
+    {
+        bail!(
+            "Dockerfile line {line}: COPY source '{source_text}' must be a relative path inside \
+             the build context"
+        );
+    }
+    if source_text.contains('*') || source_text.contains('?') || source_text.contains('[') {
+        bail!(
+            "Dockerfile line {line}: COPY wildcard sources are unsupported by the \
+             first production milestone"
+        );
+    }
+
+    let source_path = context_root.join(source);
+    reject_symlink_components(context_root, source, line)?;
+    let resolved = std::fs::canonicalize(&source_path).with_context(|| {
+        format!(
+            "Dockerfile line {line}: COPY source '{source_text}' does not exist in the build context"
+        )
+    })?;
+    if !resolved.starts_with(context_root) {
+        bail!(
+            "Dockerfile line {line}: COPY source '{source_text}' resolves outside the build context"
+        );
+    }
+    validate_source_tree(&resolved, line)?;
+
+    let (destination, destination_is_directory) = normalize_destination(destination, line)?;
+    Ok(CopyOperation {
+        source: source.to_path_buf(),
+        destination,
+        destination_is_directory,
+        source_line: line,
+    })
+}
+
+fn reject_symlink_components(context_root: &Path, relative: &Path, line: usize) -> Result<()> {
+    let mut current = context_root.to_path_buf();
+    for component in relative.components() {
+        match component {
+            Component::CurDir => continue,
+            Component::Normal(name) => current.push(name),
+            _ => continue,
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!(
+                    "Dockerfile line {line}: COPY source '{}' traverses a symlink; \
+                     symlink sources are unsupported",
+                    relative.display()
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Dockerfile line {line}: failed to inspect COPY source {}",
+                        current.display()
+                    )
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_source_tree(source: &Path, line: usize) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(source)
+        .with_context(|| format!("Dockerfile line {line}: failed to inspect COPY source"))?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        bail!("Dockerfile line {line}: COPY supports regular files and directories only");
+    }
+    if metadata.is_dir() {
+        for entry in walkdir::WalkDir::new(source).follow_links(false) {
+            let entry = entry.with_context(|| {
+                format!("Dockerfile line {line}: failed to inspect COPY directory")
+            })?;
+            let file_type = entry.file_type();
+            if file_type.is_symlink() {
+                bail!(
+                    "Dockerfile line {line}: COPY source '{}' contains a symlink; \
+                     symlink sources are unsupported",
+                    entry.path().display()
+                );
+            }
+            if !file_type.is_file() && !file_type.is_dir() {
+                bail!("Dockerfile line {line}: COPY supports regular files and directories only");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn normalize_destination(destination: &str, line: usize) -> Result<(PathBuf, bool)> {
+    if destination.contains('\\') || destination.as_bytes().contains(&0) {
+        bail!("Dockerfile line {line}: COPY destination must use normalized image paths");
+    }
+    let is_directory = destination.ends_with('/')
+        || destination.ends_with("/.")
+        || destination == "."
+        || destination == "/";
+    let mut components = Vec::new();
+    for component in destination.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if components.pop().is_none() {
+                    bail!(
+                        "Dockerfile line {line}: COPY destination '{destination}' escapes \
+                         the image filesystem root"
+                    );
+                }
+            }
+            value => components.push(value),
+        }
+    }
+    let normalized = components.into_iter().collect::<PathBuf>();
+    Ok((normalized, is_directory))
 }

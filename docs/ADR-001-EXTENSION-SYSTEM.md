@@ -19,3 +19,7 @@ By embedding a Wasm runtime (e.g., Wasmtime), users will be able to supply compi
 - We will not spend further effort documenting the current hardcoded extension system.
 - The immediate focus will be on hardening standard OCI layer parsing and caching operations.
 - The community extension registry will be deferred until the Wasm plugin system is implemented.
+
+## Production CLI policy
+
+The production Dockerfile parser recognizes `GIT`, `RUN_EXTEND`, `COPY_EXTEND`, and `HOOK` so it can report actionable instruction-specific diagnostics, but the production compiler rejects all four. The existing extension parser only creates node variants; it does not supply a stable extension contract, build-state semantics, or a production execution path. The legacy extension demonstration is not evidence of supported build behavior. These instructions must not execute through host shell or synthetic-success paths.

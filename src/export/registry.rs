@@ -126,10 +126,13 @@ impl RegistryClient {
         // 4. Create index.json
         let index = crate::export::manifest::OCIIndex {
             schema_version: 2,
+            media_type: Some("application/vnd.oci.image.index.v1+json".to_string()),
             manifests: vec![crate::export::manifest::OCIDescriptor {
                 media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
                 digest: manifest_digest,
                 size: manifest_content.len() as u64,
+                platform: None,
+                annotations: None,
             }],
         };
         fs::write(

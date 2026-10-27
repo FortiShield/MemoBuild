@@ -1,6 +1,6 @@
 use crate::cache::HybridCache;
 use crate::graph::BuildGraph;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
@@ -35,7 +35,7 @@ impl IncrementalExecutor {
             observer: None,
             reproducible: false,
             dry_run: false,
-            sandbox: Arc::new(crate::sandbox::local::LocalSandbox::new(
+            sandbox: Arc::new(crate::sandbox::bubblewrap::BubblewrapSandbox::new(
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
             )),
             remote_executor: None,
@@ -415,9 +415,20 @@ impl IncrementalExecutor {
                 }
 
                 let env = sandbox.prepare(node).await?;
-
-                // Execute command
-                let exec_result = sandbox.execute(&env, node).await?;
+                let execution = sandbox.execute(&env, node).await;
+                let cleanup = sandbox.cleanup(env).await;
+                let exec_result = match (execution, cleanup) {
+                    (Ok(result), Ok(())) => result,
+                    (Err(error), Ok(())) => return Err(error),
+                    (Ok(_), Err(error)) => {
+                        return Err(error).context("Failed to clean up build sandbox")
+                    }
+                    (Err(error), Err(cleanup_error)) => {
+                        return Err(
+                            error.context(format!("Sandbox cleanup also failed: {cleanup_error}"))
+                        )
+                    }
+                };
 
                 if exec_result.exit_code != 0 {
                     anyhow::bail!(
@@ -427,9 +438,7 @@ impl IncrementalExecutor {
                     );
                 }
 
-                let data = exec_result.stdout;
-                sandbox.cleanup(&env).await?;
-                data
+                exec_result.stdout
             }
         } else {
             Vec::new() // Default empty artifact data for non-runnable nodes

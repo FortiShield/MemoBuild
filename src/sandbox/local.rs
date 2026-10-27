@@ -4,6 +4,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::process::Command;
 
+/// Executes commands directly on the host without filesystem or process isolation.
+///
+/// This backend is available only with the explicitly unsafe
+/// `unsafe-local-execution` Cargo feature and must never be used for untrusted builds.
 pub struct LocalSandbox {
     pub workspace_dir: std::path::PathBuf,
 }
@@ -17,10 +21,10 @@ impl LocalSandbox {
 #[async_trait]
 impl Sandbox for LocalSandbox {
     async fn prepare(&self, node: &Node) -> Result<SandboxEnv> {
-        Ok(SandboxEnv {
-            workspace_dir: self.workspace_dir.clone(),
-            env_vars: node.env.clone(),
-        })
+        Ok(SandboxEnv::new(
+            self.workspace_dir.clone(),
+            node.env.clone(),
+        ))
     }
 
     async fn execute(&self, env: &SandboxEnv, node: &Node) -> Result<ExecResult> {
@@ -90,7 +94,7 @@ impl Sandbox for LocalSandbox {
         })
     }
 
-    async fn cleanup(&self, _env: &SandboxEnv) -> Result<()> {
+    async fn cleanup(&self, _env: SandboxEnv) -> Result<()> {
         Ok(())
     }
 }

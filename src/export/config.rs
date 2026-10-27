@@ -1,10 +1,17 @@
 use crate::export::layer::LayerInfo;
-use crate::graph::BuildGraph;
-use chrono::Utc;
+use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImageConfigMetadata {
+    pub cmd: Option<Vec<String>>,
+    pub entrypoint: Option<Vec<String>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OCIConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
     pub architecture: String,
     pub os: String,
     pub config: OCIImageConfig,
@@ -14,11 +21,13 @@ pub struct OCIConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OCIImageConfig {
-    #[serde(rename = "Env")]
-    pub env: Vec<String>,
-    #[serde(rename = "Cmd")]
+    #[serde(rename = "Env", skip_serializing_if = "Option::is_none")]
+    pub env: Option<Vec<String>>,
+    #[serde(rename = "Cmd", skip_serializing_if = "Option::is_none")]
     pub cmd: Option<Vec<String>>,
-    #[serde(rename = "WorkingDir")]
+    #[serde(rename = "Entrypoint", skip_serializing_if = "Option::is_none")]
+    pub entrypoint: Option<Vec<String>>,
+    #[serde(rename = "WorkingDir", skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
 }
 
@@ -31,44 +40,43 @@ pub struct OCIRootFS {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OCIHistory {
-    pub created: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
     pub created_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub empty_layer: Option<bool>,
 }
 
-pub fn create_config(graph: &BuildGraph, layers: &[LayerInfo], reproducible: bool) -> OCIConfig {
-    let mut env = Vec::new();
-    for node in &graph.nodes {
-        for (k, v) in &node.env {
-            env.push(format!("{}={}", k, v));
-        }
-    }
-
+pub fn create_config(
+    layers: &[LayerInfo],
+    image_metadata: &ImageConfigMetadata,
+    reproducible: bool,
+) -> OCIConfig {
     let timestamp = if reproducible {
         "1970-01-01T00:00:00Z".to_string()
     } else {
-        Utc::now().to_rfc3339()
+        Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
     };
 
     OCIConfig {
+        created: Some(timestamp.clone()),
         architecture: "amd64".to_string(),
         os: "linux".to_string(),
         config: OCIImageConfig {
-            env,
-            cmd: Some(vec!["/bin/sh".to_string()]),
-            working_dir: Some("/".to_string()),
+            env: None,
+            cmd: image_metadata.cmd.clone(),
+            entrypoint: image_metadata.entrypoint.clone(),
+            working_dir: None,
         },
         rootfs: OCIRootFS {
             fs_type: "layers".to_string(),
-            diff_ids: layers.iter().map(|l| l.diff_id.clone()).collect(),
+            diff_ids: layers.iter().map(|layer| layer.diff_id.clone()).collect(),
         },
-        history: graph
-            .nodes
+        history: layers
             .iter()
-            .map(|n| OCIHistory {
-                created: timestamp.clone(),
-                created_by: format!("MemoBuild: {}", n.name),
+            .map(|_| OCIHistory {
+                created: Some(timestamp.clone()),
+                created_by: "MemoBuild: staged filesystem layer".to_string(),
                 empty_layer: Some(false),
             })
             .collect(),

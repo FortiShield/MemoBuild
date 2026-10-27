@@ -54,78 +54,86 @@ impl RemoteExecutor for WorkerNode {
             .await
             .context("Failed to prepare sandbox for remote execution")?;
 
-        // 2b. Reconstruct Inputs from Manifest
-        if let Ok(Some(manifest_data)) = self
-            .cache
-            .get_artifact(&action.input_root_digest.hash)
-            .await
-        {
-            if let Ok(manifest) =
-                serde_json::from_slice::<crate::cache_utils::ArtifactManifest>(&manifest_data)
+        let execution = async {
+            if let Ok(Some(manifest_data)) = self
+                .cache
+                .get_artifact(&action.input_root_digest.hash)
+                .await
             {
-                println!(
-                    "   📥 [Worker {}] Reconstructing {} files...",
-                    self.id,
-                    manifest.files.len()
-                );
-                let cache_clone = self.cache.clone();
-                manifest
-                    .reconstruct(&env.workspace_dir, move |h| {
-                        let cache = cache_clone.clone();
-                        async move { cache.get_artifact(&h).await }
-                    })
-                    .await
-                    .context("Failed to reconstruct inputs from manifest")?;
-            }
-        }
-
-        // 3. Execute
-        let exec_result = self
-            .sandbox
-            .execute(&env, &node)
-            .await
-            .context("Failed to execute command in remote sandbox")?;
-
-        // 4. Capture Outputs
-        let mut output_files = HashMap::new();
-
-        for path in &action.output_files {
-            let full_path = env.workspace_dir.join(path);
-            if full_path.exists() && full_path.is_file() {
-                match std::fs::read(&full_path) {
-                    Ok(data) => {
-                        let hash = blake3::hash(&data).to_string();
-                        let digest = Digest {
-                            hash: hash.clone(),
-                            size_bytes: data.len() as i64,
-                        };
-
-                        // Upload to cache
-                        if let Err(e) = self.cache.put_artifact(&hash, &data).await {
-                            eprintln!(
-                                "⚠️ [Worker {}] Failed to upload output {}: {}",
-                                self.id, path, e
-                            );
-                        } else {
-                            output_files.insert(path.clone(), digest);
-                            println!(
-                                "   📤 [Worker {}] Uploaded output: {} ({})",
-                                self.id,
-                                path,
-                                &hash[..8]
-                            );
-                        }
-                    }
-                    Err(e) => eprintln!(
-                        "⚠️ [Worker {}] Failed to read output {}: {}",
-                        self.id, path, e
-                    ),
+                if let Ok(manifest) =
+                    serde_json::from_slice::<crate::cache_utils::ArtifactManifest>(&manifest_data)
+                {
+                    println!(
+                        "   📥 [Worker {}] Reconstructing {} files...",
+                        self.id,
+                        manifest.files.len()
+                    );
+                    let cache_clone = self.cache.clone();
+                    manifest
+                        .reconstruct(&env.workspace_dir, move |h| {
+                            let cache = cache_clone.clone();
+                            async move { cache.get_artifact(&h).await }
+                        })
+                        .await
+                        .context("Failed to reconstruct inputs from manifest")?;
                 }
             }
-        }
 
-        // 5. Cleanup
-        self.sandbox.cleanup(&env).await.ok();
+            let exec_result = self
+                .sandbox
+                .execute(&env, &node)
+                .await
+                .context("Failed to execute command in remote sandbox")?;
+
+            let mut output_files = HashMap::new();
+            for path in &action.output_files {
+                let full_path = env.workspace_dir.join(path);
+                if full_path.exists() && full_path.is_file() {
+                    match std::fs::read(&full_path) {
+                        Ok(data) => {
+                            let hash = blake3::hash(&data).to_string();
+                            let digest = Digest {
+                                hash: hash.clone(),
+                                size_bytes: data.len() as i64,
+                            };
+                            if let Err(e) = self.cache.put_artifact(&hash, &data).await {
+                                eprintln!(
+                                    "⚠️ [Worker {}] Failed to upload output {}: {}",
+                                    self.id, path, e
+                                );
+                            } else {
+                                output_files.insert(path.clone(), digest);
+                                println!(
+                                    "   📤 [Worker {}] Uploaded output: {} ({})",
+                                    self.id,
+                                    path,
+                                    &hash[..8]
+                                );
+                            }
+                        }
+                        Err(e) => eprintln!(
+                            "⚠️ [Worker {}] Failed to read output {}: {}",
+                            self.id, path, e
+                        ),
+                    }
+                }
+            }
+
+            Ok::<_, anyhow::Error>((exec_result, output_files))
+        }
+        .await;
+
+        let cleanup = self.sandbox.cleanup(env).await;
+        let (exec_result, output_files) = match (execution, cleanup) {
+            (Ok(result), Ok(())) => result,
+            (Err(error), Ok(())) => return Err(error),
+            (Ok(_), Err(error)) => return Err(error).context("Failed to clean up remote sandbox"),
+            (Err(error), Err(cleanup_error)) => {
+                return Err(error.context(format!(
+                    "Remote sandbox cleanup also failed: {cleanup_error}"
+                )))
+            }
+        };
 
         let end_time = Instant::now();
 

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use memobuild::server;
-use memobuild::{cache, core, docker, executor, export, logging};
+use memobuild::{cache, core, docker, export, logging};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
 
-        /// Use a specific sandbox runtime (local, containerd)
+        /// Execution backend (bubblewrap; local requires the unsafe-local-execution feature)
         #[arg(long)]
         sandbox: Option<String>,
 
@@ -93,7 +93,7 @@ enum Commands {
         port: u16,
 
         /// Sandbox runtime to use
-        #[arg(long, default_value = "local")]
+        #[arg(long, default_value = "bubblewrap")]
         sandbox: String,
     },
     /// Pull an image from a registry
@@ -153,126 +153,156 @@ async fn run_build(
     sandbox_type: Option<String>,
     should_pull: bool,
 ) -> Result<()> {
-    println!("🚀 MemoBuild Engine Starting...");
-
-    let env_fp = memobuild::env::EnvFingerprint::collect();
-    println!("   🔑 Env Fingerprint: {}", &env_fp.hash()[..8]);
-
-    let cache = init_cache().await?;
-
-    let dockerfile = fs::read_to_string(&dockerfile_path)
-        .with_context(|| format!("Failed to read Dockerfile at {}", dockerfile_path))?;
-
-    println!("📄 Parsing Dockerfile...");
-    let instructions = docker::parser::parse_dockerfile(&dockerfile);
-
-    if should_pull {
-        pull_base_images(&instructions).await?;
-    }
-
-    println!("📊 Building DAG for context: {}...", context_dir.display());
-    let mut graph = docker::dag::build_graph_from_instructions(instructions, context_dir.clone());
-
-    let ai_layer = memobuild::ai::AiLayer::new();
-    ai_layer.analyze(&mut graph, &env_fp, &context_dir);
-
-    println!("🔍 Detecting changes (filesystem hashing)...");
-    core::detect_changes(&mut graph);
-
-    println!("🔄 Propagating dirty flags...");
-    core::propagate_dirty(&mut graph);
-
-    println!("🔑 Recomputing deterministic hashes...");
-    core::compute_composite_hashes(&mut graph, &env_fp);
-
-    println!("📜 Propagating artifact manifests...");
-    let manifests = core::propagate_manifests(&mut graph);
-
-    if let Some(ref _r) = cache.remote {
-        for (hash, manifest) in manifests {
-            let data = serde_json::to_vec(&manifest)?;
-            let cache_clone = cache.clone();
-            let hash_clone = hash.clone();
-            tokio::spawn(async move {
-                let _ = cache_clone.put_artifact(&hash_clone, &data).await;
-            });
-        }
-    }
-
-    let dirty = graph.nodes.iter().filter(|n| n.dirty).count();
-    println!(
-        "   {} dirty  |  {} cached",
-        dirty,
-        graph.nodes.len() - dirty
-    );
-
-    if dirty > 0 {
-        println!("🚀 Initiating smart prefetching for {} nodes...", dirty);
-        let dirty_hashes: Vec<String> = graph
-            .nodes
-            .iter()
-            .filter(|n| n.dirty)
-            .map(|n| n.hash.clone())
-            .collect();
-        cache.clone().prefetch_artifacts(dirty_hashes);
-    }
-
-    let build_start = std::time::Instant::now();
-    let mut executor = executor::IncrementalExecutor::new(cache.clone())
-        .with_reproducible(reproducible)
-        .with_dry_run(dry_run);
-
-    executor = executor.with_sandbox(Arc::new(memobuild::sandbox::local::LocalSandbox::new(
-        context_dir.clone(),
-    )));
-
-    if let Some(st) = sandbox_type {
-        if st.as_str() == "containerd" {
-            #[cfg(feature = "containerd")]
-            {
-                let sandbox = Arc::new(memobuild::sandbox::containerd::ContainerdSandbox::new(
-                    "memobuild",
-                    "/run/containerd/containerd.sock",
-                ));
-                executor = executor.with_sandbox(sandbox);
-            }
-        }
-    }
-
-    executor.execute(&mut graph).await?;
-    let duration = build_start.elapsed();
-
-    let _ = cache
-        .report_analytics(
-            dirty as u32,
-            (graph.nodes.len() - dirty) as u32,
-            duration.as_millis() as u64,
-        )
-        .await;
-
-    println!("📦 Exporting OCI Image...");
-    let output_dir = export::export_image(&graph, "memobuild-demo:latest", reproducible)?;
-
     if push {
-        let registry_url =
-            env::var("MEMOBUILD_REGISTRY").unwrap_or_else(|_| "localhost:5000".to_string());
-        let repo = env::var("MEMOBUILD_REPO").unwrap_or_else(|_| "memobuild-demo".to_string());
-        let token = env::var("MEMOBUILD_TOKEN").ok();
-        let mut client = export::registry::RegistryClient::new(&registry_url, &repo);
-        if let Some(t) = token {
-            client.set_token(&t);
-        }
-        client.push(&output_dir)?;
+        anyhow::bail!("Registry push is unsupported by the first OCI build milestone");
+    }
+    if should_pull {
+        anyhow::bail!("--pull is unavailable: the only accepted base is `FROM scratch`");
+    }
+    if sandbox_type.is_some() {
+        anyhow::bail!(
+            "--sandbox is not applicable: RUN is unsupported and no build command executes"
+        );
     }
 
-    println!("✅ Build and Export completed successfully");
+    let context_dir = fs::canonicalize(&context_dir)
+        .with_context(|| format!("Failed to resolve build context {}", context_dir.display()))?;
+    let requested_dockerfile = PathBuf::from(&dockerfile_path);
+    let dockerfile_path = if requested_dockerfile.is_absolute() {
+        requested_dockerfile
+    } else {
+        context_dir.join(requested_dockerfile)
+    };
+    let dockerfile = fs::read_to_string(&dockerfile_path)
+        .with_context(|| format!("Failed to read Dockerfile at {}", dockerfile_path.display()))?;
+
+    println!("📄 Parsing and validating Dockerfile...");
+    let instructions =
+        docker::parser::parse_dockerfile(&dockerfile).context("Failed to parse Dockerfile")?;
+    let plan = docker::dag::compile_dockerfile(instructions, context_dir.clone())
+        .context("Failed to compile Dockerfile")?;
+    if dry_run {
+        println!("✅ Dockerfile validation succeeded; dry run did not create an image");
+        return Ok(());
+    }
+
+    let stage = docker::stage::StageFilesystem::new()?;
+    let cache_root = if let Ok(path) = env::var("MEMOBUILD_CACHE_DIR") {
+        PathBuf::from(path)
+    } else {
+        PathBuf::from(env::var("HOME").context("HOME environment variable not set")?)
+            .join(".memobuild")
+            .join("cache")
+    };
+    let cache_limit = match env::var("MEMOBUILD_CACHE_MAX_BYTES") {
+        Ok(value) => value.parse::<u64>().with_context(|| {
+            format!("MEMOBUILD_CACHE_MAX_BYTES must be an unsigned integer, got '{value}'")
+        })?,
+        Err(env::VarError::NotPresent) => docker::build_cache::DEFAULT_CACHE_LIMIT_BYTES,
+        Err(error) => return Err(error.into()),
+    };
+    let cache = docker::build_cache::BuildSnapshotCache::with_limit(cache_root, cache_limit)?;
+    let cache_key_options = docker::build_cache::BuildCacheKeyOptions {
+        target_os: "linux".to_string(),
+        target_architecture: "amd64".to_string(),
+        reproducible,
+        image_reference: "memobuild-demo:latest".to_string(),
+    };
+    let image_metadata = export::config::ImageConfigMetadata {
+        cmd: plan.cmd.clone(),
+        entrypoint: plan.entrypoint.clone(),
+    };
+    let prepared = (|| {
+        let build_key = docker::build_cache::BuildSnapshotCache::key_for_build_with_options(
+            &plan,
+            &cache_key_options,
+        )?;
+        let cache_hit = cache.restore_with_options(&plan, stage.root(), &cache_key_options)?;
+        if docker::build_cache::BuildSnapshotCache::key_for_build_with_options(
+            &plan,
+            &cache_key_options,
+        )? != build_key
+        {
+            anyhow::bail!("Build context changed while resolving its cache snapshot");
+        }
+        if !cache_hit {
+            for operation in &plan.copies {
+                stage
+                    .apply_copy(&plan.context_root, operation)
+                    .with_context(|| {
+                        format!(
+                            "Failed to apply COPY on Dockerfile line {}",
+                            operation.source_line
+                        )
+                    })?;
+            }
+            if docker::build_cache::BuildSnapshotCache::key_for_build_with_options(
+                &plan,
+                &cache_key_options,
+            )? != build_key
+            {
+                anyhow::bail!(
+                    "Build context changed while applying COPY; refusing to cache output"
+                );
+            }
+            cache.store_with_options(&plan, stage.root(), &cache_key_options)?;
+        }
+        let prepared = export::prepare_image(
+            stage.root(),
+            &image_metadata,
+            &context_dir.join(".memobuild-output"),
+            "memobuild-demo:latest",
+            reproducible,
+        )?;
+        Ok((prepared, cache_hit))
+    })();
+    let cleanup = stage.cleanup();
+    let prepared = match (prepared, cleanup) {
+        (Ok(prepared), Ok(())) => prepared,
+        (Err(build_error), Ok(())) => return Err(build_error),
+        (Ok(_), Err(cleanup_error)) => {
+            return Err(cleanup_error)
+                .context("Build output was not published because stage cleanup failed")
+        }
+        (Err(build_error), Err(cleanup_error)) => anyhow::bail!(
+            "{build_error:#}; additionally, failed cleaning the stage filesystem: {cleanup_error:#}"
+        ),
+    };
+    let (prepared, cache_hit) = prepared;
+    let output_dir = prepared.publish()?;
+
+    println!(
+        "✅ OCI image built at {} (filesystem snapshot cache {}; no RUN commands executed)",
+        output_dir.display(),
+        if cache_hit { "hit" } else { "miss" }
+    );
+    let cache_stats = cache.try_statistics()?;
+    println!(
+        "Cache stats: hits={}, misses={}, key_mismatches={}, verification_failures={}, \
+         restored_bytes={}, snapshot_writes={}, evictions={}, quota_refusals={}, \
+         storage_usage_bytes={}, storage_limit_bytes={}, gc_failures={}, orphan_files_removed={}, \
+         rebuilds_after_failure={}",
+        cache_stats.hits,
+        cache_stats.misses,
+        cache_stats.key_mismatches,
+        cache_stats.snapshot_verification_failures,
+        cache_stats.restored_bytes,
+        cache_stats.snapshot_writes,
+        cache_stats.evictions,
+        cache_stats.quota_refusals,
+        cache_stats.storage_usage_bytes,
+        cache_stats.storage_limit_bytes,
+        cache_stats.garbage_collection_failures,
+        cache_stats.orphan_files_removed,
+        cache_stats.rebuilds_after_cache_failure
+    );
     Ok(())
 }
 
 async fn run_graph(context_dir: PathBuf, dockerfile_path: String) -> Result<()> {
     let dockerfile = fs::read_to_string(&dockerfile_path)?;
-    let instructions = docker::parser::parse_dockerfile(&dockerfile);
-    let graph = docker::dag::build_graph_from_instructions(instructions, context_dir);
+    let instructions = docker::parser::parse_dockerfile(&dockerfile)?;
+    let graph = docker::dag::build_graph_from_instructions(instructions, context_dir)?;
 
     println!("\n{}", "🕸️  Build Dependency Graph:".bold().cyan());
     for node in &graph.nodes {
@@ -297,8 +327,8 @@ async fn run_explain_cache(
     let env_fp = memobuild::env::EnvFingerprint::collect();
     let cache = init_cache().await?;
     let dockerfile = fs::read_to_string(&dockerfile_path)?;
-    let instructions = docker::parser::parse_dockerfile(&dockerfile);
-    let mut graph = docker::dag::build_graph_from_instructions(instructions, context_dir.clone());
+    let instructions = docker::parser::parse_dockerfile(&dockerfile)?;
+    let mut graph = docker::dag::build_graph_from_instructions(instructions, context_dir.clone())?;
 
     // AI Layer Analysis to get extra dependencies
     let ai_layer = memobuild::ai::AiLayer::new();
@@ -361,15 +391,6 @@ async fn init_cache() -> Result<Arc<cache::HybridCache>> {
             as Arc<dyn memobuild::remote_cache::RemoteCache>
     });
     Ok(Arc::new(cache::HybridCache::new_with_box(remote_cache)?))
-}
-
-async fn pull_base_images(instructions: &[docker::parser::Instruction]) -> Result<()> {
-    for instr in instructions {
-        if let docker::parser::Instruction::From(img) = instr {
-            println!("   📥 Pulling base image {}...", img);
-        }
-    }
-    Ok(())
 }
 
 async fn run_pull(full_name: String) -> Result<()> {

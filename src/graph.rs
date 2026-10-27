@@ -12,6 +12,7 @@ pub enum NodeKind {
     Env,
     Workdir,
     Cmd,
+    Entrypoint,
     Git {
         url: String,
         target: PathBuf,

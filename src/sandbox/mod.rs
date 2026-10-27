@@ -3,9 +3,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tempfile::TempDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SandboxKind {
+    Bubblewrap,
     Local,
     Containerd,
 }
@@ -16,10 +18,21 @@ pub struct ResourceLimits {
     pub memory_mb: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SandboxEnv {
     pub workspace_dir: std::path::PathBuf,
     pub env_vars: HashMap<String, String>,
+    pub(crate) temp_dir: Option<TempDir>,
+}
+
+impl SandboxEnv {
+    pub fn new(workspace_dir: std::path::PathBuf, env_vars: HashMap<String, String>) -> Self {
+        Self {
+            workspace_dir,
+            env_vars,
+            temp_dir: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -33,10 +46,12 @@ pub struct ExecResult {
 pub trait Sandbox: Send + Sync {
     async fn prepare(&self, node: &Node) -> Result<SandboxEnv>;
     async fn execute(&self, env: &SandboxEnv, node: &Node) -> Result<ExecResult>;
-    async fn cleanup(&self, env: &SandboxEnv) -> Result<()>;
+    async fn cleanup(&self, env: SandboxEnv) -> Result<()>;
 }
 
+pub mod bubblewrap;
 #[cfg(feature = "containerd")]
 pub mod containerd;
+#[cfg(feature = "unsafe-local-execution")]
 pub mod local;
 pub mod spec;

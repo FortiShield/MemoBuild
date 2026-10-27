@@ -82,8 +82,9 @@ We will acknowledge receipt within 24 hours and provide updates every 5 business
 - [ ] Implement request signing for artifact authenticity
 
 **Build Container Execution:**
-- Uses containerd for sandboxing
-- Recommendation: Run in user namespace when possible
+- v0.2.0 ran build commands on the host by default; its containerd backend was simulated.
+- The `production/v0.2.x-hardening` branch defaults to Bubblewrap on Linux x86_64, requires working unprivileged user namespaces, and fails closed if isolation cannot be established. `unsafe-local-execution` is an explicit unsafe development-only opt-in.
+- Limitations: the staged workspace has no aggregate disk quota; no cgroup or seccomp policy is installed; filesystem snapshots and OCI layers are not produced. See [`docs/production/IMPLEMENTATION_AUDIT.md`](docs/production/IMPLEMENTATION_AUDIT.md#mb-p0-001-implementation-on-productionv02x-hardening).
 
 ### 2.5 Access Control
 
@@ -139,15 +140,13 @@ pub fn sign_artifact(data: &[u8], secret: &[u8]) -> String {
 ### 3.2 Build Container Escape
 
 **Scenario:** Malicious Dockerfile escapes sandbox  
-**Current Mitigation:** Uses containerd isolation  
-**Recommendation:** Run with limited capabilities
+**v0.2.0:** No enforced isolation; host-shell execution was the default.
+**MB-P0-001 branch mitigation:** Bubblewrap user/PID/IPC/UTS/network namespaces, isolated writable workspace, read-only system mounts, no capabilities, resource limits, timeout, and parent-death cleanup. Focused tests cover a protected host-file write, missing-runtime and CLI-default fail-closed behavior, network namespace separation, and timeout cleanup.
+**Remaining risk:** Bubblewrap/kernel vulnerabilities, missing aggregate storage quotas and cgroup/seccomp controls, and no staged-rootfs output restoration. Do not treat this as a complete container runtime.
 
 ```dockerfile
-# Security recommendations for build container:
-- Use read-only filesystem where possible
-- Drop Linux capabilities: CNS, SYS_ADMIN, SYS_PTRACE
-- Use user namespace (uid mapping)
-- Network isolation (if build doesn't need network)
+# Operational prerequisite:
+# Install bubblewrap and enable unprivileged user namespaces on Linux x86_64.
 ```
 
 ### 3.3 Side-Channel Attacks

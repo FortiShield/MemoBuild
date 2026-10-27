@@ -47,6 +47,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Install Bubblewrap
+        run: sudo apt-get update && sudo apt-get install --yes bubblewrap
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:

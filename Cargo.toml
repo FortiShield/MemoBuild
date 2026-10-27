@@ -42,6 +42,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "ansi"] }
 clap = { version = "4.4", features = ["derive", "env"] }
 chrono = { version = "0.4", features = ["serde"] }
+libc = "0.2"
+fs2 = "0.4"
+tempfile = "3"
 
 colored = "3.1.1"
 indicatif = "0.18.4"
@@ -52,11 +55,15 @@ default = []
 server = []
 containerd = ["containerd-client", "tonic", "prost", "prost-types"]
 remote-exec = ["tonic", "prost", "prost-types"]
+unsafe-local-execution = []
 
 [dev-dependencies]
 criterion = "0.8.2"
-tempfile = "3"
 
 [[bench]]
 name = "core_bench"
 harness = false
+
+[[example]]
+name = "build_farm_demo"
+required-features = ["unsafe-local-execution"]

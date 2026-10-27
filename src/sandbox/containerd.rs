@@ -8,6 +8,7 @@ use containerd_client::services::v1::CreateContainerRequest;
 use containerd_client::tonic;
 use containerd_client::tonic::Request;
 use containerd_client::with_namespace;
+use tempfile::TempDir;
 
 pub struct ContainerdSandbox {
     pub namespace: String,
@@ -41,12 +42,14 @@ impl Sandbox for ContainerdSandbox {
         //    - Create a containerd snapshot (overlayfs)
         //    - Mount the snapshot to a temporary directory
 
-        let temp_dir = std::env::temp_dir().join(format!("memobuild-{}", node.hash));
-        std::fs::create_dir_all(&temp_dir)?;
+        let temp_dir = TempDir::new()?;
+        let workspace_dir = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(&workspace_dir)?;
 
         Ok(SandboxEnv {
-            workspace_dir: temp_dir,
+            workspace_dir,
             env_vars: node.env.clone(),
+            temp_dir: Some(temp_dir),
         })
     }
 
@@ -112,13 +115,13 @@ impl Sandbox for ContainerdSandbox {
         })
     }
 
-    async fn cleanup(&self, env: &SandboxEnv) -> Result<()> {
+    async fn cleanup(&self, env: SandboxEnv) -> Result<()> {
         println!(
             "🧹 [containerd] Cleaning up sandbox at: {}",
             env.workspace_dir.display()
         );
-        if env.workspace_dir.exists() {
-            let _ = std::fs::remove_dir_all(&env.workspace_dir);
+        if let Some(temp_dir) = env.temp_dir {
+            temp_dir.close()?;
         }
         Ok(())
     }
